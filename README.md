@@ -1,221 +1,324 @@
-# Local egg detection benchmark
+# Egg camera monitor and local benchmark
 
-Для публикации этой подготовленной копии в отдельном репозитории см.
-`GIT_SETUP.md`.
+Проект обнаруживает яйца на изображениях и в RTSP-потоке, отслеживает новые
+появления и отправляет размеченные кадры и суточную статистику в Telegram.
+Тот же код позволяет сравнивать несколько моделей на общем наборе кадров.
 
-Локальный стенд сравнивает модели на одинаковых кадрах и сохраняет:
+Основная модель рабочего монитора — `google/owlv2-base-patch16-ensemble`.
 
-- число найденных яиц;
-- координаты и уверенность;
-- время обработки;
-- исходный ответ VLM;
-- изображения с рамками;
-- сводные JSON, CSV и Markdown.
+## Возможности
 
-## Модели
+- детекция и координаты яиц на кадре;
+- отслеживание новых и исчезнувших объектов между кадрами;
+- подтверждение кандидата серией кадров;
+- Telegram-уведомления с красными рамками;
+- повтор неотправленных уведомлений после сетевого сбоя;
+- ежедневная статистика;
+- локальный benchmark с JSON, CSV, Markdown и размеченными изображениями.
 
-- `qwen_mlx`: экспериментальная `Qwen2.5-VL-3B-Instruct` в 4-bit MLX для Apple Silicon;
-- `yolo_world`: zero-shot `YOLOv8s-WorldV2`;
-- `grounding_dino`: `Grounding DINO Tiny`.
-- `owlv2`: `OWLv2 base patch16 ensemble`;
-- `moondream2`: закреплённый релиз `2025-06-21` с нативной детекцией.
+## Поддерживаемые модели
 
-DeepSeek-VL2-Tiny пока не включён: официальный runtime ориентирован на CUDA,
-а его CPU/MLX-порты менее воспроизводимы. Его имеет смысл добавить после
-получения базовых результатов.
+- `owlv2`: основная модель монитора, OWLv2 base patch16 ensemble;
+- `yolo_world`: zero-shot YOLOv8s-WorldV2;
+- `grounding_dino`: Grounding DINO Tiny;
+- `moondream2`: релиз `2025-06-21` с нативной детекцией;
+- `qwen_mlx`: экспериментальный платформенно-зависимый адаптер Qwen2.5-VL.
 
-## Установка на Apple Silicon
+Для рабочего мониторинга достаточно зависимостей из
+`requirements-monitor.txt`. Дополнительные benchmark-модели устанавливаются
+отдельно и для работы OWLv2 не нужны.
 
-Детекторы и Qwen нужно держать в разных окружениях: Moondream2 требует
-`transformers==4.52.4`, а актуальный `mlx-vlm` требует `transformers>=5.14`.
+## Требования
+
+- Python 3.11 или 3.12;
+- доступ к интернету при первой загрузке модели;
+- свободное место для виртуального окружения и кэша модели;
+- сетевой доступ к RTSP-камере для потокового режима.
+
+OWLv2 может работать на CPU. Совместимый аппаратный ускоритель уменьшает время
+обработки, но не обязателен.
+
+## Установка
+
+Перейдите в каталог проекта и создайте изолированное окружение:
 
 ```bash
-cd /Users/admin/Documents/GIT/egg_cam
+cd /path/to/egg_cam
 python3 -m venv .venv
-.venv/bin/python -m pip install -r requirements-detectors.txt
-
-python3 -m venv .venv-qwen
-.venv-qwen/bin/python -m pip install -r requirements-qwen.txt
 ```
 
-Модели загружаются при первом запуске и сохраняются в кэше Hugging Face.
+### Активация виртуального окружения
 
-## Перенос на Ubuntu
+Виртуальное окружение нужно активировать в каждом новом терминале перед
+установкой пакетов или запуском проекта. После активации команды `python` и
+`pip` будут использовать интерпретатор и пакеты из `.venv`.
 
-Не переносите `.venv`: виртуальные окружения содержат платформенные бинарные
-файлы и должны создаваться заново на целевой машине. Каталоги `.model_cache`,
-`outputs` и `runtime` тоже можно не копировать. Для монитора нужна только OWLv2;
-MLX/Qwen на Ubuntu не используется.
-
-С macOS проект можно передать по SSH:
+Для Bash или Zsh:
 
 ```bash
-rsync -av \
-  --exclude '.venv*' \
-  --exclude '.model_cache' \
-  --exclude 'outputs' \
-  --exclude 'runtime' \
-  --exclude 'weights' \
-  --exclude 'yolov8s-worldv2.pt' \
-  /Users/admin/Documents/GIT/egg_cam/ \
-  USER@UBUNTU_HOST:~/egg_detection_benchmark/
+source .venv/bin/activate
 ```
 
-На Ubuntu рекомендуется Python 3.11 или 3.12:
+Для Fish:
 
-```bash
-sudo apt update
-sudo apt install -y python3 python3-venv python3-pip ffmpeg
-
-cd ~/egg_detection_benchmark
-python3 -m venv .venv
-.venv/bin/python -m pip install --upgrade pip
-.venv/bin/python -m pip install -r requirements-monitor.txt
+```fish
+source .venv/bin/activate.fish
 ```
 
-При `device: auto` выбирается NVIDIA CUDA, затем Apple MPS, иначе CPU. Проверка:
+Для Windows PowerShell:
 
-```bash
-.venv/bin/python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
-Если на ноутбуке есть NVIDIA GPU, команду установки PyTorch для его версии CUDA
-лучше взять в официальном селекторе PyTorch, а затем установить остальные
-зависимости. Без совместимой видеокарты OWLv2 будет работать на CPU, но медленнее.
+Для Windows CMD:
 
-После установки сначала выполните локальный replay:
-
-```bash
-HF_HOME=.model_cache \
-.venv/bin/python -m egg_benchmark.cli monitor \
-  --input data/input --dry-run \
-  --state-dir runtime/ubuntu-test
+```bat
+.venv\Scripts\activate.bat
 ```
 
-Затем задайте `CAMERA_RTSP_URL`, `TELEGRAM_BOT_TOKEN` и `TELEGRAM_CHAT_ID` так же,
-как в разделе ниже. Ubuntu-ноутбук должен находиться в сети, из которой доступен
-IP камеры и TCP-порт RTSP (обычно 554).
-
-## Один кадр или каталог
+После успешной активации в начале приглашения терминала обычно появляется
+`(.venv)`. Проверить используемый интерпретатор можно командой:
 
 ```bash
-.venv/bin/python -m egg_benchmark.cli run \
-  --input data/input \
-  --models yolo_world,grounding_dino,owlv2,moondream2
+python -c "import sys; print(sys.executable)"
 ```
 
-Можно запускать модели отдельно:
+Путь в выводе должен вести в каталог `.venv`. Все последующие команды в этом
+README предполагают, что окружение активировано.
+
+Чтобы выйти из виртуального окружения, выполните:
 
 ```bash
-.venv-qwen/bin/python -m egg_benchmark.cli run --input data/input --models qwen_mlx
-.venv/bin/python -m egg_benchmark.cli run --input data/input --models owlv2
+deactivate
 ```
 
-Результат появится в `outputs/<timestamp>/`.
+Активация необязательна, если вы явно вызываете интерпретатор окружения:
+`.venv/bin/python` в POSIX-системах или `.venv\Scripts\python.exe` в Windows.
 
-Ручные контрольные значения находятся в `data/ground_truth.csv`. Их можно
-исправлять или дополнять; отчёт автоматически посчитает точность полного
-совпадения количества и среднюю абсолютную ошибку.
-
-## Получение кадров по RTSP
-
-RTSP лучше задавать переменной окружения, чтобы пароль не оказался в истории:
+Обновите `pip`:
 
 ```bash
-export CAMERA_RTSP_URL='rtsp://USER:PASSWORD@CAMERA_IP:554/Streaming/Channels/101'
-.venv/bin/python -m egg_benchmark.cli capture --count 10 --interval 300
+python -m pip install --upgrade pip
 ```
 
-Для быстрого теста можно использовать интервал 10 секунд. Для реального сбора —
-300 секунд.
+### Установка на CPU
 
-## Мониторинг и Telegram
-
-При старте первые два кадра используются как исходное состояние: уже лежащие
-яйца не записываются как новые. При обнаружении нового кандидата сервис делает
-burst из трёх кадров: исходный кадр, повтор через 5 секунд и ещё один контрольный
-кадр через 5 секунд. Если яйцо присутствует на первом повторе, уведомление уходит
-примерно через 5 секунд. После регистрации оно не считается повторно, пока не
-исчезнет из кадра.
-
-Сначала проверьте полный pipeline на локальных изображениях без Telegram:
+Сначала установите CPU-сборку PyTorch, затем остальные зависимости. Такой
+порядок не позволяет `pip` случайно загрузить ненужный комплект CUDA:
 
 ```bash
-HF_HOME=.model_cache \
-.venv/bin/python -m egg_benchmark.cli monitor \
+python -m pip install torch torchvision \
+  --index-url https://download.pytorch.org/whl/cpu
+python -m pip install -r requirements-monitor.txt
+```
+
+### Установка с аппаратным ускорителем
+
+Сначала установите подходящие `torch` и `torchvision` для доступного ускорителя,
+затем установите зависимости проекта:
+
+```bash
+python -m pip install -r requirements-monitor.txt
+```
+
+Проверьте окружение:
+
+```bash
+python -m pip check
+python -c "import torch; print('torch:', torch.__version__); print('CUDA:', torch.cuda.is_available())"
+```
+
+При `device: auto` код выбирает доступный ускоритель, иначе использует CPU.
+Устройство можно явно задать в конфигурации.
+
+## Конфигурация OWLv2
+
+Создайте локальный `config.yaml` на основе `config.example.yaml`. Файл
+`config.yaml` исключён из Git.
+
+Минимальная рабочая конфигурация:
+
+```yaml
+models:
+  owlv2:
+    model_id: google/owlv2-base-patch16-ensemble
+    classes:
+      - a chicken egg
+      - a white egg
+      - a brown egg
+    confidence: 0.30
+    device: auto
+
+monitor:
+  model: owlv2
+  confirm_frames: 2
+  confirmation_burst_frames: 3
+  confirmation_interval_seconds: 5.0
+  warmup_frames: 2
+  max_missed_frames: 1
+  iou_threshold: 0.20
+  max_center_distance: 0.035
+  report_hour: 8
+```
+
+Для машины без рабочего GPU можно явно указать `device: cpu`.
+
+Модель загружается при первом запуске. Переменная `HF_HOME=.model_cache`
+сохраняет веса внутри каталога проекта; `.model_cache` исключён из Git.
+
+## Секреты и переменные окружения
+
+Создайте локальный файл `.env`:
+
+```bash
+CAMERA_RTSP_URL='rtsp://USER:PASSWORD@CAMERA_IP:554/Streaming/Channels/101'
+TELEGRAM_BOT_TOKEN='123456:telegram-token'
+TELEGRAM_CHAT_ID='@channel_name'
+```
+
+Для приватного Telegram-канала `TELEGRAM_CHAT_ID` обычно имеет вид `-100...`.
+Бота нужно добавить в канал с правом публикации сообщений.
+
+Ограничьте доступ к файлу:
+
+```bash
+chmod 600 .env
+```
+
+`.env` уже исключён из Git. Не помещайте токены и пароль камеры в
+`config.yaml`, аргументы командной строки или историю оболочки.
+
+Перед запуском в POSIX-совместимой оболочке загрузите переменные:
+
+```bash
+set -a
+source .env
+set +a
+```
+
+В PowerShell переменные можно задать для текущей сессии через
+`$env:CAMERA_RTSP_URL`, `$env:TELEGRAM_BOT_TOKEN` и `$env:TELEGRAM_CHAT_ID`.
+
+## Проверка установки
+
+Запустите тесты:
+
+```bash
+python -m unittest discover -s tests -v
+```
+
+Проверьте OWLv2 на одном контрольном изображении:
+
+```bash
+HF_HOME=.model_cache python -m egg_benchmark.cli run \
+  --config config.yaml \
+  --input data/input/coop_sample.png \
+  --models owlv2
+```
+
+Результат будет записан в `outputs/<timestamp>/`.
+
+## Локальный replay без камеры и Telegram
+
+Replay проверяет модель, трекер и хранилище на сохранённых изображениях:
+
+```bash
+HF_HOME=.model_cache python -m egg_benchmark.cli monitor \
+  --config config.yaml \
   --input data/input \
   --dry-run \
   --state-dir runtime/replay
 ```
 
-Для Telegram создайте бота через BotFather, добавьте его администратором канала
-с правом публикации сообщений и задайте переменные окружения. Для публичного
-канала `TELEGRAM_CHAT_ID` может иметь вид `@channel_name`; для приватного обычно
-используется числовой идентификатор вида `-100...`.
+## Тест Telegram с размеченным кадром
+
+После загрузки переменных из `.env` выполните:
 
 ```bash
-export CAMERA_RTSP_URL='rtsp://USER:PASSWORD@CAMERA_IP:554/Streaming/Channels/101'
-export TELEGRAM_BOT_TOKEN='123456:telegram-token'
-export TELEGRAM_CHAT_ID='@channel_name'
+HF_HOME=.model_cache python -m egg_benchmark.cli telegram-test \
+  --config config.yaml \
+  --image data/input/coop_sample.png \
+  --output runtime/telegram-test.jpg \
+  --caption 'Тест egg_cam: размеченный кадр' \
+  --detect
+```
 
-HF_HOME=.model_cache \
-.venv/bin/python -m egg_benchmark.cli monitor \
+Флаг `--detect` запускает модель из секции `monitor`, рисует рамки и отправляет
+результат. Без этого флага команда отправляет исходное изображение.
+
+## Проверка RTSP-камеры
+
+Короткий тест без публикации в Telegram:
+
+```bash
+HF_HOME=.model_cache python -m egg_benchmark.cli monitor \
+  --config config.yaml \
+  --dry-run \
+  --interval 10 \
+  --max-frames 3 \
+  --state-dir runtime/camera-test
+```
+
+Полный ограниченный тест камеры, трекера и Telegram:
+
+```bash
+HF_HOME=.model_cache python -m egg_benchmark.cli monitor \
+  --config config.yaml \
+  --interval 10 \
+  --max-frames 3 \
+  --state-dir runtime/camera-full-test
+```
+
+На свежем `state-dir` после часа `report_hour` монитор может отправить суточный
+отчёт, даже если новых яиц на тестовых кадрах нет.
+
+## Рабочий мониторинг
+
+Запуск без ограничения числа кадров:
+
+```bash
+HF_HOME=.model_cache python -m egg_benchmark.cli monitor \
+  --config config.yaml \
   --interval 300 \
   --state-dir runtime/production
 ```
 
-Для тестовой отправки одного изображения без запуска модели и камеры:
+Интервал относится к обычному опросу камеры. После появления кандидата монитор
+делает быструю серию подтверждающих кадров с параметрами
+`confirmation_burst_frames` и `confirmation_interval_seconds`.
+
+Первые `warmup_frames` кадров задают исходное состояние: уже лежащие яйца не
+записываются как новые. Подтверждённое яйцо не учитывается повторно, пока не
+исчезнет из кадра.
+
+Состояние хранится в `runtime/production/events.sqlite3`, кадры событий — в
+`runtime/production/events/`. Неотправленные уведомления повторяются в следующем
+цикле. После `report_hour` один раз в сутки отправляется статистика за вчера,
+сегодня, текущую неделю и месяц.
+
+## Сохранение кадров без мониторинга
 
 ```bash
-export TELEGRAM_BOT_TOKEN='123456:telegram-token'
-export TELEGRAM_CHAT_ID='@channel_name'
-
-HF_HOME=.model_cache \
-.venv/bin/python -m egg_benchmark.cli telegram-test \
-  --image data/input/coop_sample.png \
-  --caption 'Тест egg monitor: отправка работает' \
-  --detect
+python -m egg_benchmark.cli capture --count 10 --interval 300
 ```
 
-С флагом `--detect` команда запускает модель из секции `monitor`, рисует красные
-рамки вокруг обнаруженных яиц и отправляет размеченный кадр. RTSP-мониторинг и
-учёт статистики не запускаются. Без `--detect` отправляется исходное изображение.
-Переменные `export` и команду нужно выполнять в одном терминале.
+Для быстрой проверки используйте меньший интервал, например 10 секунд.
 
-В рабочем мониторинге при подтверждении нового яйца также отправляется
-размеченный кадр с красной рамкой.
+## Benchmark нескольких моделей
 
-Состояние хранится в `runtime/production/events.sqlite3`, фотографии событий —
-в `runtime/production/events/`. Неотправленные из-за сбоя Telegram фотографии
-повторяются на следующем цикле. После 08:00 один раз в сутки публикуется отчёт:
-за вчера, сегодня, с начала недели и с начала месяца. Час, число подтверждающих кадров
-и параметры сопоставления рамок настраиваются в секции `monitor` файла
-`config.example.yaml`.
-
-Для короткой проверки камеры без публикации:
+После установки зависимостей выбранных адаптеров:
 
 ```bash
-HF_HOME=.model_cache \
-.venv/bin/python -m egg_benchmark.cli monitor \
-  --dry-run --interval 10 --max-frames 3 \
-  --state-dir runtime/camera-test
+python -m egg_benchmark.cli run \
+  --config config.yaml \
+  --input data/input \
+  --models yolo_world,grounding_dino,owlv2,moondream2
 ```
 
-Интервал `--interval 300` относится только к обычному фоновому опросу. После
-первого обнаружения включается быстрая серия, поэтому подтверждение и отправка
-занимают примерно пять секунд. Параметры `confirmation_burst_frames` и
-`confirmation_interval_seconds` находятся в секции `monitor`.
+Ручная разметка находится в `data/ground_truth.csv`. Итоговый отчёт содержит
+точность полного совпадения количества и среднюю абсолютную ошибку.
 
-## Проверка тестов
-
-```bash
-.venv/bin/python -m unittest discover -s tests -v
-```
-
-## Интерпретация
-
-Zero-shot результаты нельзя использовать как окончательную статистику без
-проверки на наборе размеченных кадров. Главные показатели — пропуски, ложные
-обнаружения за сутки и стабильность на соседних кадрах.
-
-Текущие результаты новых кадров приведены в `BENCHMARK_RESULTS.md`.
+Zero-shot результаты следует проверять на размеченном наборе кадров. Главные
+рабочие показатели — пропуски, ложные обнаружения и стабильность на соседних
+кадрах. Сохранённые результаты приведены в `BENCHMARK_RESULTS.md`.
