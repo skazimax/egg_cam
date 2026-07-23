@@ -30,7 +30,7 @@ DeepSeek-VL2-Tiny пока не включён: официальный runtime �
 `transformers==4.52.4`, а актуальный `mlx-vlm` требует `transformers>=5.14`.
 
 ```bash
-cd /Users/admin/Documents/BCS/ai/egg_detection_benchmark
+cd /Users/admin/Documents/GIT/egg_cam
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements-detectors.txt
 
@@ -57,7 +57,7 @@ rsync -av \
   --exclude 'runtime' \
   --exclude 'weights' \
   --exclude 'yolov8s-worldv2.pt' \
-  /Users/admin/Documents/BCS/ai/egg_detection_benchmark/ \
+  /Users/admin/Documents/GIT/egg_cam/ \
   USER@UBUNTU_HOST:~/egg_detection_benchmark/
 ```
 
@@ -163,6 +163,27 @@ HF_HOME=.model_cache \
   --interval 300 \
   --state-dir runtime/production
 ```
+
+Для тестовой отправки одного изображения без запуска модели и камеры:
+
+```bash
+export TELEGRAM_BOT_TOKEN='123456:telegram-token'
+export TELEGRAM_CHAT_ID='@channel_name'
+
+HF_HOME=.model_cache \
+.venv/bin/python -m egg_benchmark.cli telegram-test \
+  --image data/input/coop_sample.png \
+  --caption 'Тест egg monitor: отправка работает' \
+  --detect
+```
+
+С флагом `--detect` команда запускает модель из секции `monitor`, рисует красные
+рамки вокруг обнаруженных яиц и отправляет размеченный кадр. RTSP-мониторинг и
+учёт статистики не запускаются. Без `--detect` отправляется исходное изображение.
+Переменные `export` и команду нужно выполнять в одном терминале.
+
+В рабочем мониторинге при подтверждении нового яйца также отправляется
+размеченный кадр с красной рамкой.
 
 Состояние хранится в `runtime/production/events.sqlite3`, фотографии событий —
 в `runtime/production/events/`. Неотправленные из-за сбоя Telegram фотографии

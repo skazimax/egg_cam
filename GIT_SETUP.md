@@ -8,7 +8,7 @@
 ## Создание репозитория на Mac
 
 ```bash
-cd /Users/admin/Documents/BCS/ai/egg_detection_benchmark_git
+cd /Users/admin/Documents/GIT/egg_cam
 git init
 git add .
 git commit -m "Initial egg detection monitor"

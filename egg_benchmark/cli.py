@@ -121,6 +121,52 @@ def capture(args: argparse.Namespace) -> int:
     return 0
 
 
+def send_telegram_test(args: argparse.Namespace) -> int:
+    telegram = TelegramClient.from_environment()
+    if not telegram.enabled:
+        print(
+            "Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.",
+            file=sys.stderr,
+        )
+        return 2
+    if not args.image.is_file():
+        print(f"Image not found: {args.image}", file=sys.stderr)
+        return 2
+
+    image_to_send = args.image
+    caption = args.caption
+    try:
+        if args.detect:
+            config = load_config(args.config)
+            monitor_config = config.get("monitor", {})
+            model_name = str(monitor_config.get("model", "owlv2"))
+            adapter = build_adapter(
+                model_name, config.get("models", {}).get(model_name, {})
+            )
+            print(f"[{model_name}] loading model...", flush=True)
+            adapter.load()
+            result = adapter.predict(args.image)
+            if result.error:
+                raise RuntimeError(result.error)
+            save_annotated(result, args.output, highlighted=result.detections)
+            image_to_send = args.output
+            caption = f"{caption}\n🥚 Найдено яиц: {result.count}"
+
+        telegram.send_photo(image_to_send, caption)
+    except Exception as exc:
+        response = getattr(exc, "response", None)
+        status_code = getattr(response, "status_code", None)
+        status = f" (HTTP {status_code})" if status_code is not None else ""
+        print(
+            f"Telegram test failed{status}: {type(exc).__name__}",
+            file=sys.stderr,
+        )
+        return 1
+
+    print(f"Telegram test photo sent: {image_to_send}")
+    return 0
+
+
 def run_monitor(args: argparse.Namespace) -> int:
     logging.basicConfig(
         level=logging.INFO,
@@ -241,6 +287,33 @@ def build_parser() -> argparse.ArgumentParser:
         "--state-dir", type=Path, default=PROJECT_DIR / "runtime"
     )
     watch.set_defaults(handler=run_monitor)
+
+    telegram_test = subparsers.add_parser(
+        "telegram-test", help="send one test photo to Telegram"
+    )
+    telegram_test.add_argument(
+        "--image",
+        type=Path,
+        default=PROJECT_DIR / "data/input/coop_sample.png",
+    )
+    telegram_test.add_argument(
+        "--caption",
+        default="Тест egg monitor: отправка работает",
+    )
+    telegram_test.add_argument(
+        "--detect",
+        action="store_true",
+        help="run the configured detector and send an annotated image",
+    )
+    telegram_test.add_argument(
+        "--config", type=Path, default=PROJECT_DIR / "config.example.yaml"
+    )
+    telegram_test.add_argument(
+        "--output",
+        type=Path,
+        default=PROJECT_DIR / "runtime/telegram-test/annotated.jpg",
+    )
+    telegram_test.set_defaults(handler=send_telegram_test)
     return parser
 
 
