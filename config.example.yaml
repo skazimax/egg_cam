@@ -1,0 +1,53 @@
+models:
+  qwen_mlx:
+    model_id: mlx-community/Qwen2.5-VL-3B-Instruct-4bit
+    max_tokens: 256
+  yolo_world:
+    model_id: yolov8s-worldv2.pt
+    classes:
+      - egg
+      - white egg
+      - brown egg
+    confidence: 0.005
+    image_size: 1280
+    # Full-frame inference worked better on the current coop samples.
+    # Set to 2 to experiment with overlapping 2x2 crops.
+    tile_grid: 1
+    tile_overlap: 0.15
+    device: auto
+  grounding_dino:
+    model_id: IDEA-Research/grounding-dino-tiny
+    classes:
+      - a chicken egg
+    box_threshold: 0.30
+    text_threshold: 0.15
+    device: cpu
+  owlv2:
+    model_id: google/owlv2-base-patch16-ensemble
+    classes:
+      - a chicken egg
+      - a white egg
+      - a brown egg
+    confidence: 0.30
+    device: auto
+  moondream2:
+    model_id: vikhyatk/moondream2
+    revision: "2025-06-21"
+    query: chicken egg
+    device: auto
+
+monitor:
+  model: owlv2
+  # An egg must be present in this many consecutive checks.
+  confirm_frames: 2
+  # First detection + two control frames. The notification can be sent
+  # after the first repeated detection, approximately five seconds later.
+  confirmation_burst_frames: 3
+  confirmation_interval_seconds: 5.0
+  # Eggs visible during startup are treated as an existing baseline.
+  warmup_frames: 2
+  # Remove a track after this many missed checks.
+  max_missed_frames: 1
+  iou_threshold: 0.20
+  max_center_distance: 0.035
+  report_hour: 8
