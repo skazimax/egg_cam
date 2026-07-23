@@ -1,0 +1,13 @@
+.venv*/
+.model_cache/
+outputs/
+__pycache__/
+*.pyc
+runtime/
+weights/
+*.pt
+.env
+config.yaml
+.DS_Store
+.idea/
+.vscode/
