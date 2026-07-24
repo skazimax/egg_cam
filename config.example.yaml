@@ -29,6 +29,9 @@ models:
       - a white egg
       - a brown egg
     confidence: 0.30
+    # Maximum detection-box area as a fraction of the full frame.
+    # 0.002 means 0.2%; use null or 0 to disable the size filter.
+    max_box_area_ratio: 0.002
     device: auto
   moondream2:
     model_id: vikhyatk/moondream2

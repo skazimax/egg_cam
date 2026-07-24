@@ -71,6 +71,28 @@ def resolve_torch_device(requested: str) -> str:
     return "cpu"
 
 
+def filter_detections_by_area(
+    detections: list[Detection],
+    width: int,
+    height: int,
+    max_box_area_ratio: float | None,
+) -> list[Detection]:
+    """Drop boxes that occupy more than the configured fraction of the frame."""
+    if max_box_area_ratio is None or max_box_area_ratio <= 0:
+        return detections
+    frame_area = width * height
+    if frame_area <= 0:
+        return detections
+
+    filtered: list[Detection] = []
+    for detection in detections:
+        x1, y1, x2, y2 = detection.box_xyxy
+        box_area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
+        if box_area / frame_area <= max_box_area_ratio:
+            filtered.append(detection)
+    return filtered
+
+
 class ModelAdapter(ABC):
     name: str
 
@@ -90,9 +112,11 @@ class QwenMlxAdapter(ModelAdapter):
         self,
         model_id: str = "mlx-community/Qwen2.5-VL-3B-Instruct-4bit",
         max_tokens: int = 256,
+        max_box_area_ratio: float | None = None,
     ) -> None:
         self.model_id = model_id
         self.max_tokens = max_tokens
+        self.max_box_area_ratio = max_box_area_ratio
         self.model: Any = None
         self.processor: Any = None
         self.config: Any = None
@@ -132,6 +156,11 @@ class QwenMlxAdapter(ModelAdapter):
         try:
             payload = extract_json_object(text)
             count, detections = qwen_payload_to_detections(payload, width, height)
+            detections = filter_detections_by_area(
+                detections, width, height, self.max_box_area_ratio
+            )
+            if self.max_box_area_ratio is not None and self.max_box_area_ratio > 0:
+                count = len(detections)
             return ModelResult(
                 model=self.name,
                 image=str(image_path),
@@ -166,6 +195,7 @@ class YoloWorldAdapter(ModelAdapter):
         tile_grid: int = 1,
         tile_overlap: float = 0.15,
         device: str = "auto",
+        max_box_area_ratio: float | None = None,
     ) -> None:
         self.model_id = model_id
         self.classes = classes or ["egg", "white egg", "brown egg"]
@@ -174,6 +204,7 @@ class YoloWorldAdapter(ModelAdapter):
         self.tile_grid = max(1, tile_grid)
         self.tile_overlap = max(0.0, min(0.49, tile_overlap))
         self.device = device
+        self.max_box_area_ratio = max_box_area_ratio
         self.model: Any = None
 
     def load(self) -> None:
@@ -220,6 +251,9 @@ class YoloWorldAdapter(ModelAdapter):
                         )
                     )
         detections = self._nms(detections, iou_threshold=0.35)
+        detections = filter_detections_by_area(
+            detections, width, height, self.max_box_area_ratio
+        )
         return ModelResult(
             model=self.name,
             image=str(image_path),
@@ -281,12 +315,14 @@ class GroundingDinoAdapter(ModelAdapter):
         box_threshold: float = 0.15,
         text_threshold: float = 0.15,
         device: str = "cpu",
+        max_box_area_ratio: float | None = None,
     ) -> None:
         self.model_id = model_id
         self.classes = classes or ["a chicken egg"]
         self.box_threshold = box_threshold
         self.text_threshold = text_threshold
         self.device = device
+        self.max_box_area_ratio = max_box_area_ratio
         self.processor: Any = None
         self.model: Any = None
 
@@ -337,7 +373,9 @@ class GroundingDinoAdapter(ModelAdapter):
             width=width,
             height=height,
             latency_seconds=latency,
-            detections=detections,
+            detections=filter_detections_by_area(
+                detections, width, height, self.max_box_area_ratio
+            ),
         )
 
 
@@ -350,11 +388,13 @@ class OwlV2Adapter(ModelAdapter):
         classes: list[str] | None = None,
         confidence: float = 0.02,
         device: str = "auto",
+        max_box_area_ratio: float | None = None,
     ) -> None:
         self.model_id = model_id
         self.classes = classes or ["a chicken egg", "a white egg", "a brown egg"]
         self.confidence = confidence
         self.device = device
+        self.max_box_area_ratio = max_box_area_ratio
         self.processor: Any = None
         self.model: Any = None
 
@@ -399,13 +439,17 @@ class OwlV2Adapter(ModelAdapter):
                 processed["labels"].cpu().tolist(),
             )
         ]
+        detections = YoloWorldAdapter._nms(detections, iou_threshold=0.35)
+        detections = filter_detections_by_area(
+            detections, width, height, self.max_box_area_ratio
+        )
         return ModelResult(
             model=self.name,
             image=str(image_path),
             width=width,
             height=height,
             latency_seconds=latency,
-            detections=YoloWorldAdapter._nms(detections, iou_threshold=0.35),
+            detections=detections,
         )
 
 
@@ -418,11 +462,13 @@ class Moondream2Adapter(ModelAdapter):
         revision: str = "2025-06-21",
         query: str = "chicken egg",
         device: str = "auto",
+        max_box_area_ratio: float | None = None,
     ) -> None:
         self.model_id = model_id
         self.revision = revision
         self.query = query
         self.device = device
+        self.max_box_area_ratio = max_box_area_ratio
         self.model: Any = None
 
     def load(self) -> None:
@@ -466,7 +512,9 @@ class Moondream2Adapter(ModelAdapter):
             width=width,
             height=height,
             latency_seconds=latency,
-            detections=detections,
+            detections=filter_detections_by_area(
+                detections, width, height, self.max_box_area_ratio
+            ),
             raw_output=str(payload),
         )
 
