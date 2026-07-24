@@ -2,6 +2,7 @@ Pillow>=10.0
 PyYAML>=6.0
 opencv-python-headless>=4.10
 requests>=2.31
+PySocks>=1.7.1
 
 # Install only the model extras you want to benchmark:
 # pip install -r requirements-qwen.txt

@@ -5,9 +5,29 @@ from pathlib import Path
 
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
+DEFAULT_RTSP_WARMUP_SECONDS = 4.0
 
 
-def capture_rtsp_frame(rtsp_url: str, output_dir: Path) -> Path:
+def _read_warmed_rtsp_frame(stream, warmup_seconds: float):
+    """Read until the RTSP decoder has received a complete keyframe."""
+    deadline = time.monotonic() + max(0.0, warmup_seconds)
+    frame = None
+    while frame is None or time.monotonic() < deadline:
+        ok, candidate = stream.read()
+        if ok:
+            frame = candidate
+        else:
+            time.sleep(0.05)
+    if frame is None:
+        raise RuntimeError("failed to read RTSP frame")
+    return frame
+
+
+def capture_rtsp_frame(
+    rtsp_url: str,
+    output_dir: Path,
+    warmup_seconds: float = DEFAULT_RTSP_WARMUP_SECONDS,
+) -> Path:
     import cv2
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -15,13 +35,7 @@ def capture_rtsp_frame(rtsp_url: str, output_dir: Path) -> Path:
     if not stream.isOpened():
         raise RuntimeError("could not open RTSP stream")
     try:
-        frame = None
-        for _ in range(3):
-            ok, candidate = stream.read()
-            if ok:
-                frame = candidate
-        if frame is None:
-            raise RuntimeError("failed to read RTSP frame")
+        frame = _read_warmed_rtsp_frame(stream, warmup_seconds)
         timestamp = time.strftime("%Y%m%d_%H%M%S")
         destination = output_dir / f"camera_{timestamp}.jpg"
         if not cv2.imwrite(str(destination), frame):
@@ -60,9 +74,15 @@ def capture_rtsp(
         raise RuntimeError("could not open RTSP stream")
     try:
         for index in range(count):
-            ok, frame = stream.read()
-            if not ok:
-                raise RuntimeError(f"failed to read RTSP frame {index + 1}")
+            if index == 0:
+                frame = _read_warmed_rtsp_frame(
+                    stream,
+                    DEFAULT_RTSP_WARMUP_SECONDS,
+                )
+            else:
+                ok, frame = stream.read()
+                if not ok:
+                    raise RuntimeError(f"failed to read RTSP frame {index + 1}")
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             destination = output_dir / f"camera_{timestamp}_{index + 1:03d}.jpg"
             if not cv2.imwrite(str(destination), frame):
