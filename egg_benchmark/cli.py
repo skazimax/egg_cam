@@ -181,6 +181,16 @@ def run_monitor(args: argparse.Namespace) -> int:
     print(f"[{model_name}] loading model...", flush=True)
     adapter.load()
 
+    store = EventStore(args.state_dir / "events.sqlite3")
+    stored_peak = store.get_metadata("inventory_session_peak")
+
+    def stored_int(key: str) -> int:
+        try:
+            return int(store.get_metadata(key) or 0)
+        except ValueError:
+            logging.getLogger(__name__).warning("invalid integer metadata: %s", key)
+            return 0
+
     tracker = EggTracker(
         confirm_frames=int(monitor_config.get("confirm_frames", 2)),
         warmup_frames=int(monitor_config.get("warmup_frames", 2)),
@@ -188,6 +198,13 @@ def run_monitor(args: argparse.Namespace) -> int:
         iou_threshold=float(monitor_config.get("iou_threshold", 0.20)),
         max_center_distance=float(
             monitor_config.get("max_center_distance", 0.035)
+        ),
+        session_peak=stored_int("inventory_session_peak") if stored_peak is not None else None,
+        peak_regular_hits=stored_int("inventory_peak_regular_hits"),
+        empty_regular_checks=stored_int("inventory_empty_regular_checks"),
+        collection_arm_checks=int(monitor_config.get("collection_arm_checks", 3)),
+        collection_confirm_checks=int(
+            monitor_config.get("collection_confirm_checks", 6)
         ),
     )
     telegram = TelegramClient.from_environment()
@@ -198,7 +215,6 @@ def run_monitor(args: argparse.Namespace) -> int:
         )
         return 2
 
-    store = EventStore(args.state_dir / "events.sqlite3")
     monitor = EggMonitor(
         adapter=adapter,
         tracker=tracker,

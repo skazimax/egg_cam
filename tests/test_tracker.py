@@ -28,17 +28,82 @@ class EggTrackerTest(unittest.TestCase):
         self.assertFalse(tracker.has_unconfirmed_candidates)
         self.assertEqual(tracker.update([egg(301, 302)], 1000, 1000), [])
 
-    def test_removed_egg_can_be_counted_again(self) -> None:
+    def test_reappearing_eggs_are_not_counted_twice_within_session(self) -> None:
         tracker = EggTracker(
-            confirm_frames=2, warmup_frames=2, max_missed_frames=0
+            confirm_frames=2,
+            warmup_frames=2,
+            max_missed_frames=0,
+            collection_arm_checks=3,
+            collection_confirm_checks=3,
+        )
+        tracker.update([], 1000, 1000)
+        tracker.update([], 1000, 1000)
+        pair = [egg(300, 300), egg(400, 300)]
+        tracker.update(pair, 1000, 1000, is_regular_frame=True)
+        self.assertEqual(
+            len(tracker.update(pair, 1000, 1000, is_regular_frame=False)), 2
+        )
+
+        # A long occlusion cannot reset a peak that was seen only in a burst.
+        for _ in range(10):
+            tracker.update([], 1000, 1000, is_regular_frame=True)
+        tracker.update(pair, 1000, 1000, is_regular_frame=True)
+        self.assertEqual(
+            tracker.update(pair, 1000, 1000, is_regular_frame=False), []
+        )
+
+        five = pair + [egg(500, 300), egg(600, 300), egg(700, 300)]
+        tracker.update(five, 1000, 1000, is_regular_frame=True)
+        self.assertEqual(
+            len(tracker.update(five, 1000, 1000, is_regular_frame=False)), 3
+        )
+        self.assertEqual(tracker.session_peak, 5)
+
+    def test_armed_empty_session_resets_automatically(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=2,
+            warmup_frames=2,
+            max_missed_frames=0,
+            collection_arm_checks=2,
+            collection_confirm_checks=3,
         )
         tracker.update([], 1000, 1000)
         tracker.update([], 1000, 1000)
         tracker.update([egg(300, 300)], 1000, 1000)
-        self.assertEqual(len(tracker.update([egg(300, 300)], 1000, 1000)), 1)
-        tracker.update([], 1000, 1000)
+        self.assertEqual(
+            len(
+                tracker.update(
+                    [egg(300, 300)], 1000, 1000, is_regular_frame=False
+                )
+            ),
+            1,
+        )
+        tracker.update([egg(300, 300)], 1000, 1000, is_regular_frame=True)
+        tracker.update([egg(300, 300)], 1000, 1000, is_regular_frame=True)
+
+        for _ in range(2):
+            tracker.update([], 1000, 1000, is_regular_frame=True)
+            self.assertFalse(tracker.last_collection_reset)
+        tracker.update([], 1000, 1000, is_regular_frame=True)
+        self.assertTrue(tracker.last_collection_reset)
+        self.assertEqual(tracker.session_peak, 0)
+
         tracker.update([egg(300, 300)], 1000, 1000)
         self.assertEqual(len(tracker.update([egg(300, 300)], 1000, 1000)), 1)
+
+    def test_restored_peak_suppresses_duplicate_after_restart(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=2,
+            warmup_frames=2,
+            max_missed_frames=0,
+            session_peak=2,
+        )
+        pair = [egg(300, 300), egg(400, 300)]
+        tracker.update(pair, 1000, 1000)
+        self.assertEqual(tracker.update(pair, 1000, 1000), [])
+        three = pair + [egg(500, 300)]
+        tracker.update(three, 1000, 1000)
+        self.assertEqual(len(tracker.update(three, 1000, 1000)), 1)
 
 
 if __name__ == "__main__":

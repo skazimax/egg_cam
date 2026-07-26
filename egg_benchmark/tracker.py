@@ -15,7 +15,7 @@ class EggTrack:
 
 
 class EggTracker:
-    """Track persistent egg boxes and emit each newly confirmed egg once."""
+    """Track eggs and count growth within a conservatively reset inventory session."""
 
     def __init__(
         self,
@@ -24,13 +24,26 @@ class EggTracker:
         max_missed_frames: int = 1,
         iou_threshold: float = 0.20,
         max_center_distance: float = 0.035,
+        session_peak: int | None = None,
+        peak_regular_hits: int = 0,
+        empty_regular_checks: int = 0,
+        collection_arm_checks: int = 3,
+        collection_confirm_checks: int = 6,
     ) -> None:
         self.confirm_frames = max(1, confirm_frames)
         self.warmup_frames = max(1, warmup_frames)
         self.max_missed_frames = max(0, max_missed_frames)
         self.iou_threshold = iou_threshold
         self.max_center_distance = max_center_distance
-        self.frame_index = 0
+        self.collection_arm_checks = max(1, collection_arm_checks)
+        self.collection_confirm_checks = max(1, collection_confirm_checks)
+        self.session_peak = max(0, session_peak or 0)
+        self.peak_regular_hits = max(0, peak_regular_hits)
+        self.empty_regular_checks = max(0, empty_regular_checks)
+        self.last_collection_reset = False
+        # Restored state is already a baseline, so startup must not discard growth
+        # that occurred while the process was stopped.
+        self.frame_index = self.warmup_frames if session_peak is not None else 0
         self._next_id = 1
         self.tracks: list[EggTrack] = []
 
@@ -48,9 +61,14 @@ class EggTracker:
         return self.frame_index < self.warmup_frames
 
     def update(
-        self, detections: list[Detection], width: int, height: int
+        self,
+        detections: list[Detection],
+        width: int,
+        height: int,
+        is_regular_frame: bool = True,
     ) -> list[Detection]:
         self.frame_index += 1
+        self.last_collection_reset = False
         matched_tracks: set[int] = set()
         matched_detections: set[int] = set()
 
@@ -101,7 +119,56 @@ class EggTracker:
             track.counted = True
             if self.frame_index > self.warmup_frames:
                 newly_confirmed.append(track.detection)
-        return newly_confirmed
+
+        visible_tracks = [
+            track for track in self.tracks if track.counted and track.misses == 0
+        ]
+        visible_count = len(visible_tracks)
+
+        if self.frame_index <= self.warmup_frames:
+            self.session_peak = max(self.session_peak, visible_count)
+            return []
+
+        growth = max(0, visible_count - self.session_peak)
+        emitted: list[Detection] = []
+        if growth:
+            # Prefer boxes that were confirmed on this frame. If restored state or
+            # overlapping tracks make that list shorter, highlight other visible eggs.
+            candidates = newly_confirmed + [track.detection for track in visible_tracks]
+            for detection in candidates:
+                if detection not in emitted:
+                    emitted.append(detection)
+                if len(emitted) == growth:
+                    break
+            self.session_peak = visible_count
+
+        if is_regular_frame:
+            self._update_collection_state(visible_count)
+        return emitted
+
+    def _update_collection_state(self, visible_count: int) -> None:
+        if self.session_peak == 0:
+            self.peak_regular_hits = 0
+            self.empty_regular_checks = 0
+            return
+        if visible_count >= self.session_peak:
+            self.peak_regular_hits = min(
+                self.collection_arm_checks, self.peak_regular_hits + 1
+            )
+            self.empty_regular_checks = 0
+            return
+        if visible_count > 0:
+            self.empty_regular_checks = 0
+            return
+        if self.peak_regular_hits < self.collection_arm_checks:
+            return
+        self.empty_regular_checks += 1
+        if self.empty_regular_checks < self.collection_confirm_checks:
+            return
+        self.session_peak = 0
+        self.peak_regular_hits = 0
+        self.empty_regular_checks = 0
+        self.last_collection_reset = True
 
     def _match_score(
         self,

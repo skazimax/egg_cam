@@ -13,10 +13,12 @@ class FakeTracker:
 class FakeMonitor:
     def __init__(self) -> None:
         self.tracker = FakeTracker()
-        self.images: list[Path] = []
+        self.images: list[tuple[Path, bool]] = []
 
-    def process_image(self, image_path: Path) -> int:
-        self.images.append(image_path)
+    def process_image(
+        self, image_path: Path, is_regular_frame: bool = True
+    ) -> int:
+        self.images.append((image_path, is_regular_frame))
         return 0
 
 
@@ -37,7 +39,14 @@ class MonitorTest(unittest.TestCase):
             confirmation_interval_seconds=5,
         )
 
-        self.assertEqual(monitor.images, [Path("one.jpg"), Path("two.jpg"), Path("three.jpg")])
+        self.assertEqual(
+            monitor.images,
+            [
+                (Path("one.jpg"), True),
+                (Path("two.jpg"), False),
+                (Path("three.jpg"), False),
+            ],
+        )
         self.assertEqual([call.args[0] for call in sleep.call_args_list], [5, 5])
 
 

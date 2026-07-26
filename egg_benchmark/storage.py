@@ -114,14 +114,15 @@ class EventStore:
         return None if row is None else str(row[0])
 
     def set_metadata(self, key: str, value: str) -> None:
-        self.connection.execute(
-            """
-            INSERT INTO metadata(key, value) VALUES (?, ?)
-            ON CONFLICT(key) DO UPDATE SET value = excluded.value
-            """,
-            (key, value),
-        )
-        self.connection.commit()
+        self.set_metadata_many({key: value})
+
+    def set_metadata_many(self, values: dict[str, str]) -> None:
+        with self.connection:
+            self.connection.executemany(
+                """INSERT INTO metadata(key, value) VALUES (?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value""",
+                values.items(),
+            )
 
     def close(self) -> None:
         self.connection.close()

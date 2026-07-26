@@ -38,20 +38,42 @@ class EggMonitor:
         self.report_hour = report_hour
         self._dry_report_date: str | None = None
 
-    def process_image(self, image_path: Path, now: datetime | None = None) -> int:
+    def process_image(
+        self,
+        image_path: Path,
+        now: datetime | None = None,
+        is_regular_frame: bool = True,
+    ) -> int:
         now = now or datetime.now().astimezone()
         self.send_pending_notifications(now)
         result = self.adapter.predict(image_path)
         if result.error:
             raise RuntimeError(result.error)
-        new_eggs = self.tracker.update(result.detections, result.width, result.height)
+        new_eggs = self.tracker.update(
+            result.detections,
+            result.width,
+            result.height,
+            is_regular_frame=is_regular_frame,
+        )
+        self.store.set_metadata_many(
+            {
+                "inventory_session_peak": str(self.tracker.session_peak),
+                "inventory_peak_regular_hits": str(self.tracker.peak_regular_hits),
+                "inventory_empty_regular_checks": str(
+                    self.tracker.empty_regular_checks
+                ),
+            }
+        )
         LOGGER.info(
-            "frame=%s visible=%d new=%d latency=%.2fs",
+            "frame=%s visible=%d session_peak=%d new=%d latency=%.2fs",
             image_path.name,
             result.count,
+            self.tracker.session_peak,
             len(new_eggs),
             result.latency_seconds,
         )
+        if self.tracker.last_collection_reset:
+            LOGGER.info("egg collection confirmed; inventory session reset")
         if new_eggs:
             timestamp = now.strftime("%Y%m%d_%H%M%S_%f")
             original = self.output_dir / "events" / f"egg_{timestamp}.jpg"
@@ -138,7 +160,9 @@ def monitor_rtsp(
                         break
                     time.sleep(confirmation_interval_seconds)
                     confirmation_path = capture_rtsp_frame(rtsp_url, frames_dir)
-                    monitor.process_image(confirmation_path)
+                    monitor.process_image(
+                        confirmation_path, is_regular_frame=False
+                    )
                     processed += 1
         except Exception:
             LOGGER.exception("monitoring iteration failed")
