@@ -148,7 +148,17 @@ def send_telegram_test(args: argparse.Namespace) -> int:
             result = adapter.predict(args.image)
             if result.error:
                 raise RuntimeError(result.error)
-            save_annotated(result, args.output, highlighted=result.detections)
+            save_annotated(
+                result,
+                args.output,
+                highlighted=result.detections,
+                label_mode=str(
+                    monitor_config.get("annotation_label_mode", "none")
+                ),
+                line_width=int(
+                    monitor_config.get("annotation_line_width", 2)
+                ),
+            )
             image_to_send = args.output
             caption = f"{caption}\n🥚 Найдено яиц: {result.count}"
 
@@ -223,6 +233,12 @@ def run_monitor(args: argparse.Namespace) -> int:
         output_dir=args.state_dir,
         dry_run=args.dry_run,
         report_hour=int(monitor_config.get("report_hour", 8)),
+        annotation_label_mode=str(
+            monitor_config.get("annotation_label_mode", "none")
+        ),
+        annotation_line_width=int(
+            monitor_config.get("annotation_line_width", 2)
+        ),
     )
     try:
         if args.input is not None:

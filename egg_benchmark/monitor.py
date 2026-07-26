@@ -28,6 +28,8 @@ class EggMonitor:
         output_dir: Path,
         dry_run: bool = False,
         report_hour: int = 8,
+        annotation_label_mode: str = "none",
+        annotation_line_width: int = 2,
     ) -> None:
         self.adapter = adapter
         self.tracker = tracker
@@ -36,6 +38,8 @@ class EggMonitor:
         self.output_dir = output_dir
         self.dry_run = dry_run
         self.report_hour = report_hour
+        self.annotation_label_mode = annotation_label_mode
+        self.annotation_line_width = annotation_line_width
         self._dry_report_date: str | None = None
 
     def process_image(
@@ -80,7 +84,13 @@ class EggMonitor:
             annotated = self.output_dir / "events" / f"egg_{timestamp}_annotated.jpg"
             original.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(image_path, original)
-            save_annotated(result, annotated, highlighted=new_eggs)
+            save_annotated(
+                result,
+                annotated,
+                highlighted=new_eggs,
+                label_mode=self.annotation_label_mode,
+                line_width=self.annotation_line_width,
+            )
             event_ids = self.store.add_events(now, annotated, new_eggs)
             if self.dry_run:
                 LOGGER.info("dry-run new egg photo: %s", annotated)

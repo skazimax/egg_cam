@@ -88,6 +88,8 @@ class TelegramTestCommandTest(unittest.TestCase):
             adapter.predict.return_value,
             output,
             highlighted=adapter.predict.return_value.detections,
+            label_mode="none",
+            line_width=2,
         )
         telegram.send_photo.assert_called_once_with(
             output,

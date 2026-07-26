@@ -21,19 +21,33 @@ def save_annotated(
     result: ModelResult,
     destination: Path,
     highlighted: list[Detection] | None = None,
+    label_mode: str = "full",
+    line_width: int | None = None,
 ) -> None:
+    if label_mode not in {"none", "index", "full"}:
+        raise ValueError("label_mode must be one of: none, index, full")
     image = Image.open(result.image).convert("RGB")
     draw = ImageDraw.Draw(image)
     default_color = COLORS.get(result.model, "#FFD60A")
     highlighted_ids = {id(detection) for detection in highlighted or []}
-    line_width = max(3, round(min(image.size) / 350))
+    effective_line_width = (
+        max(1, line_width)
+        if line_width is not None
+        else max(1, round(min(image.size) / 700))
+    )
     for index, detection in enumerate(result.detections, start=1):
         is_new = id(detection) in highlighted_ids
         color = "#FF3B30" if is_new else default_color
         box = tuple(detection.box_xyxy)
-        draw.rectangle(box, outline=color, width=line_width)
+        draw.rectangle(box, outline=color, width=effective_line_width)
+        if label_mode == "none":
+            continue
         prefix = "NEW " if is_new else ""
-        text = f"{prefix}{index}: {detection.label} {detection.score:.2f}"
+        text = (
+            str(index)
+            if label_mode == "index"
+            else f"{prefix}{index}: {detection.label} {detection.score:.2f}"
+        )
         left, top, _, _ = draw.textbbox((0, 0), text)
         text_width = draw.textbbox((0, 0), text)[2] - left
         text_height = draw.textbbox((0, 0), text)[3] - top

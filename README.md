@@ -177,6 +177,8 @@ monitor:
   max_center_distance: 0.035
   collection_arm_checks: 3
   collection_confirm_checks: 6
+  annotation_label_mode: none
+  annotation_line_width: 2
   report_hour: 8
 ```
 
@@ -328,6 +330,11 @@ HF_HOME=.model_cache python -m egg_benchmark.cli monitor \
 `runtime/production/events/`. Неотправленные уведомления повторяются в следующем
 цикле. После `report_hour` один раз в сутки отправляется статистика за вчера,
 сегодня, текущую неделю и месяц.
+
+Параметр `annotation_label_mode` управляет подписями около рамок: `none` убирает
+их полностью, `index` оставляет только номер, `full` выводит номер, класс и
+уверенность модели. Для Telegram рекомендуется `none` вместе с тонкой рамкой
+`annotation_line_width: 2`, чтобы разметка не перекрывала яйцо.
 
 ## Сохранение кадров без мониторинга
 

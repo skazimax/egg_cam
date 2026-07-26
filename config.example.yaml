@@ -59,4 +59,8 @@ monitor:
   # After arming, this many empty regular frames close the inventory session.
   # With --interval 300, six checks are approximately 30 minutes.
   collection_confirm_checks: 6
+  # Telegram event photos: thin boxes without labels keep small eggs visible.
+  # Supported label modes: none, index, full.
+  annotation_label_mode: none
+  annotation_line_width: 2
   report_hour: 8

@@ -116,6 +116,8 @@ monitor:
   max_center_distance: 0.035
   collection_arm_checks: 3
   collection_confirm_checks: 6
+  annotation_label_mode: none
+  annotation_line_width: 2
   report_hour: 8
 ```
 
