@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .models import ModelAdapter
+from .nest import NestGuard
 from .reporting import save_annotated
 from .sources import capture_rtsp_frame
 from .storage import EventStore
@@ -30,6 +31,7 @@ class EggMonitor:
         report_hour: int = 8,
         annotation_label_mode: str = "none",
         annotation_line_width: int = 2,
+        nest_guard: NestGuard | None = None,
     ) -> None:
         self.adapter = adapter
         self.tracker = tracker
@@ -40,6 +42,7 @@ class EggMonitor:
         self.report_hour = report_hour
         self.annotation_label_mode = annotation_label_mode
         self.annotation_line_width = annotation_line_width
+        self.nest_guard = nest_guard
         self._dry_report_date: str | None = None
 
     def process_image(
@@ -53,11 +56,25 @@ class EggMonitor:
         result = self.adapter.predict(image_path)
         if result.error:
             raise RuntimeError(result.error)
+        observation = (
+            self.nest_guard.observe(
+                image_path,
+                result.width,
+                result.height,
+                result.context_detections,
+            )
+            if self.nest_guard is not None
+            else None
+        )
+        empty_scene_confirmed = (
+            observation.empty_scene_confirmed if observation is not None else True
+        )
         new_eggs = self.tracker.update(
             result.detections,
             result.width,
             result.height,
             is_regular_frame=is_regular_frame,
+            empty_scene_confirmed=empty_scene_confirmed,
         )
         self.store.set_metadata_many(
             {
@@ -69,11 +86,21 @@ class EggMonitor:
             }
         )
         LOGGER.info(
-            "frame=%s visible=%d session_peak=%d new=%d latency=%.2fs",
+            "frame=%s visible=%d session_peak=%d new=%d hens=%d "
+            "nest_state=%s nest_similarity=%s latency=%.2fs",
             image_path.name,
             result.count,
             self.tracker.session_peak,
             len(new_eggs),
+            len(result.context_detections),
+            "occluded"
+            if observation is not None and observation.occluded
+            else "clear"
+            if empty_scene_confirmed
+            else "unclear",
+            "-"
+            if observation is None or observation.reference_similarity is None
+            else f"{observation.reference_similarity:.3f}",
             result.latency_seconds,
         )
         if self.tracker.last_collection_reset:

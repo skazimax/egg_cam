@@ -28,6 +28,11 @@ models:
       - a chicken egg
       - a white egg
       - a brown egg
+    # Context detections do not contribute to the egg count. They only prevent
+    # an automatic reset while a hen is covering a nesting area.
+    occlusion_classes:
+      - a chicken
+    occlusion_confidence: 0.50
     confidence: 0.30
     # Maximum detection-box area as a fraction of the full frame.
     # 0.002 means 0.2%; use null or 0 to disable the size filter.
@@ -59,6 +64,15 @@ monitor:
   # After arming, this many empty regular frames close the inventory session.
   # With --interval 300, six checks are approximately 30 minutes.
   collection_confirm_checks: 6
+  # Normalized x1, y1, x2, y2 coordinates of the nesting area. A chicken is an
+  # occluder only when its detection overlaps this area.
+  nest_zones:
+    - [0.20, 0.15, 0.51, 0.76]
+  nest_occlusion_min_overlap: 0.10
+  # Put several known-empty full camera frames in this directory. When the
+  # directory is configured but missing/empty, collection reset is fail-closed.
+  empty_reference_dir: runtime/production/empty_reference
+  empty_reference_min_similarity: 0.80
   # Telegram event photos: thin boxes without labels keep small eggs visible.
   # Supported label modes: none, index, full.
   annotation_label_mode: none

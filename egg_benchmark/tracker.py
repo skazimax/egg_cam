@@ -66,6 +66,7 @@ class EggTracker:
         width: int,
         height: int,
         is_regular_frame: bool = True,
+        empty_scene_confirmed: bool = True,
     ) -> list[Detection]:
         self.frame_index += 1
         self.last_collection_reset = False
@@ -143,10 +144,12 @@ class EggTracker:
             self.session_peak = visible_count
 
         if is_regular_frame:
-            self._update_collection_state(visible_count)
+            self._update_collection_state(visible_count, empty_scene_confirmed)
         return emitted
 
-    def _update_collection_state(self, visible_count: int) -> None:
+    def _update_collection_state(
+        self, visible_count: int, empty_scene_confirmed: bool
+    ) -> None:
         if self.session_peak == 0:
             self.peak_regular_hits = 0
             self.empty_regular_checks = 0
@@ -158,6 +161,9 @@ class EggTracker:
             self.empty_regular_checks = 0
             return
         if visible_count > 0:
+            self.empty_regular_checks = 0
+            return
+        if not empty_scene_confirmed:
             self.empty_regular_checks = 0
             return
         if self.peak_regular_hits < self.collection_arm_checks:

@@ -13,6 +13,7 @@ import yaml
 
 from .models import build_adapter
 from .monitor import EggMonitor, monitor_rtsp, replay_images
+from .nest import NestGuard
 from .reporting import save_annotated, write_reports
 from .sources import capture_rtsp, discover_images
 from .storage import EventStore
@@ -28,6 +29,30 @@ def load_config(path: Path) -> dict[str, Any]:
     with path.open(encoding="utf-8") as file:
         value = yaml.safe_load(file) or {}
     return value
+
+
+def build_nest_guard(
+    monitor_config: dict[str, Any], config_path: Path
+) -> NestGuard | None:
+    zones = monitor_config.get("nest_zones")
+    if not zones:
+        return None
+    reference_dir_value = monitor_config.get("empty_reference_dir")
+    reference_dir = None
+    if reference_dir_value:
+        reference_dir = Path(str(reference_dir_value)).expanduser()
+        if not reference_dir.is_absolute():
+            reference_dir = config_path.resolve().parent / reference_dir
+    return NestGuard(
+        zones=zones,
+        reference_dir=reference_dir,
+        min_reference_similarity=float(
+            monitor_config.get("empty_reference_min_similarity", 0.80)
+        ),
+        min_detection_overlap=float(
+            monitor_config.get("nest_occlusion_min_overlap", 0.10)
+        ),
+    )
 
 
 def load_ground_truth(path: Path | None) -> dict[str, int]:
@@ -239,6 +264,7 @@ def run_monitor(args: argparse.Namespace) -> int:
         annotation_line_width=int(
             monitor_config.get("annotation_line_width", 2)
         ),
+        nest_guard=build_nest_guard(monitor_config, args.config),
     )
     try:
         if args.input is not None:

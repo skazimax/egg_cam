@@ -389,12 +389,18 @@ class OwlV2Adapter(ModelAdapter):
         confidence: float = 0.02,
         device: str = "auto",
         max_box_area_ratio: float | None = None,
+        occlusion_classes: list[str] | None = None,
+        occlusion_confidence: float = 0.50,
+        occlusion_max_box_area_ratio: float | None = None,
     ) -> None:
         self.model_id = model_id
         self.classes = classes or ["a chicken egg", "a white egg", "a brown egg"]
         self.confidence = confidence
         self.device = device
         self.max_box_area_ratio = max_box_area_ratio
+        self.occlusion_classes = occlusion_classes or []
+        self.occlusion_confidence = occlusion_confidence
+        self.occlusion_max_box_area_ratio = occlusion_max_box_area_ratio
         self.processor: Any = None
         self.model: Any = None
 
@@ -414,7 +420,8 @@ class OwlV2Adapter(ModelAdapter):
 
         image = Image.open(image_path).convert("RGB")
         width, height = image.size
-        texts = [self.classes]
+        all_classes = self.classes + self.occlusion_classes
+        texts = [all_classes]
         inputs = self.processor(text=texts, images=image, return_tensors="pt").to(
             self.device
         )
@@ -424,12 +431,17 @@ class OwlV2Adapter(ModelAdapter):
         processed = self.processor.image_processor.post_process_object_detection(
             outputs=outputs,
             target_sizes=torch.tensor([[height, width]], device=self.device),
-            threshold=self.confidence,
+            threshold=min(
+                self.confidence,
+                self.occlusion_confidence
+                if self.occlusion_classes
+                else self.confidence,
+            ),
         )[0]
         latency = time.perf_counter() - started
         detections = [
             Detection(
-                label=self.classes[int(label)],
+                label=all_classes[int(label)],
                 score=float(score),
                 box_xyxy=[float(value) for value in box],
             )
@@ -439,9 +451,33 @@ class OwlV2Adapter(ModelAdapter):
                 processed["labels"].cpu().tolist(),
             )
         ]
-        detections = YoloWorldAdapter._nms(detections, iou_threshold=0.35)
-        detections = filter_detections_by_area(
-            detections, width, height, self.max_box_area_ratio
+        egg_labels = set(self.classes)
+        egg_detections = [
+            detection
+            for detection in detections
+            if detection.label in egg_labels and detection.score >= self.confidence
+        ]
+        context_detections = [
+            detection
+            for detection in detections
+            if detection.label not in egg_labels
+            and detection.score >= self.occlusion_confidence
+        ]
+        # A large hen box must never suppress an overlapping small egg box.
+        egg_detections = YoloWorldAdapter._nms(
+            egg_detections, iou_threshold=0.35
+        )
+        context_detections = YoloWorldAdapter._nms(
+            context_detections, iou_threshold=0.35
+        )
+        egg_detections = filter_detections_by_area(
+            egg_detections, width, height, self.max_box_area_ratio
+        )
+        context_detections = filter_detections_by_area(
+            context_detections,
+            width,
+            height,
+            self.occlusion_max_box_area_ratio,
         )
         return ModelResult(
             model=self.name,
@@ -449,7 +485,8 @@ class OwlV2Adapter(ModelAdapter):
             width=width,
             height=height,
             latency_seconds=latency,
-            detections=detections,
+            detections=egg_detections,
+            context_detections=context_detections,
         )
 
 

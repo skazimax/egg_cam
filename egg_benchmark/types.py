@@ -24,6 +24,9 @@ class ModelResult:
     height: int
     latency_seconds: float
     detections: list[Detection] = field(default_factory=list)
+    # Context objects (for example, hens occluding a nest) are deliberately
+    # kept out of ``detections`` so they never affect the egg count.
+    context_detections: list[Detection] = field(default_factory=list)
     reported_count: int | None = None
     raw_output: str | None = None
     error: str | None = None
@@ -42,4 +45,3 @@ class ModelResult:
     @property
     def image_name(self) -> str:
         return Path(self.image).name
-

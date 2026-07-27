@@ -91,6 +91,33 @@ class EggTrackerTest(unittest.TestCase):
         tracker.update([egg(300, 300)], 1000, 1000)
         self.assertEqual(len(tracker.update([egg(300, 300)], 1000, 1000)), 1)
 
+    def test_occluded_empty_frames_do_not_reset_session(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=1,
+            warmup_frames=1,
+            max_missed_frames=0,
+            collection_arm_checks=1,
+            collection_confirm_checks=2,
+        )
+        tracker.update([], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+
+        for _ in range(5):
+            tracker.update(
+                [],
+                1000,
+                1000,
+                empty_scene_confirmed=False,
+            )
+        self.assertEqual(tracker.session_peak, 1)
+        self.assertEqual(tracker.empty_regular_checks, 0)
+
+        tracker.update([], 1000, 1000, empty_scene_confirmed=True)
+        tracker.update([], 1000, 1000, empty_scene_confirmed=True)
+        self.assertTrue(tracker.last_collection_reset)
+        self.assertEqual(tracker.session_peak, 0)
+
     def test_restored_peak_suppresses_duplicate_after_restart(self) -> None:
         tracker = EggTracker(
             confirm_frames=2,

@@ -162,6 +162,9 @@ models:
       - a chicken egg
       - a white egg
       - a brown egg
+    occlusion_classes:
+      - a chicken
+    occlusion_confidence: 0.50
     confidence: 0.30
     max_box_area_ratio: 0.002
     device: auto
@@ -177,6 +180,11 @@ monitor:
   max_center_distance: 0.035
   collection_arm_checks: 3
   collection_confirm_checks: 6
+  nest_zones:
+    - [0.20, 0.15, 0.51, 0.76]
+  nest_occlusion_min_overlap: 0.10
+  empty_reference_dir: runtime/production/empty_reference
+  empty_reference_min_similarity: 0.80
   annotation_label_mode: none
   annotation_line_width: 2
   report_hour: 8
@@ -320,11 +328,32 @@ HF_HOME=.model_cache python -m egg_benchmark.cli monitor \
 приведёт к повторному учёту.
 
 Автоматический сброс сессии включается после того, как её максимум виден на
-`collection_arm_checks` обычных проверках. Затем гнездо должно быть пустым
-`collection_confirm_checks` обычных проверок подряд. Подтверждающая быстрая
-серия в эти счётчики не входит. При интервале 300 секунд значения `3` и `6`
-означают: максимум подтверждается примерно 15 минут, пустое состояние — около
-30 минут. Состояние сессии сохраняется между перезапусками.
+`collection_arm_checks` обычных проверках. Затем гнездо должно быть подтверждено
+пустым `collection_confirm_checks` обычных проверок подряд. Подтверждающая
+быстрая серия в эти счётчики не входит. При интервале 300 секунд значения `3` и
+`6` означают: максимум подтверждается примерно 15 минут, пустое состояние —
+около 30 минут. Состояние сессии сохраняется между перезапусками.
+
+Пустой кадр засчитывается только при выполнении всех условий:
+
+- детектор не видит яиц;
+- детектор не видит курицу, перекрывающую одну из зон `nest_zones`;
+- зона гнёзд похожа хотя бы на один эталон из `empty_reference_dir` с
+  коэффициентом не ниже `empty_reference_min_similarity`.
+
+Координаты зон нормализованы к диапазону `0..1`, поэтому не зависят от
+разрешения камеры. Курицы вне этих зон не блокируют сброс. Детекции из
+`occlusion_classes` не входят в число яиц и не рисуются на фотографиях событий.
+Если каталог эталонов настроен, но отсутствует или пуст, автоматический сброс
+блокируется до исправления конфигурации.
+
+Для эталонов создайте каталог и скопируйте туда 3–5 кадров, на которых все
+гнёзда хорошо видны, в них нет ни яиц, ни куриц:
+
+```bash
+mkdir -p runtime/production/empty_reference
+cp /path/to/verified-empty-*.jpg runtime/production/empty_reference/
+```
 
 Состояние хранится в `runtime/production/events.sqlite3`, кадры событий — в
 `runtime/production/events/`. Неотправленные уведомления повторяются в следующем
