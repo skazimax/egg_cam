@@ -109,6 +109,7 @@ class EggTrackerTest(unittest.TestCase):
                 1000,
                 1000,
                 empty_scene_confirmed=False,
+                scene_occluded=True,
             )
         self.assertEqual(tracker.session_peak, 1)
         self.assertEqual(tracker.empty_regular_checks, 0)
@@ -117,6 +118,65 @@ class EggTrackerTest(unittest.TestCase):
         tracker.update([], 1000, 1000, empty_scene_confirmed=True)
         self.assertTrue(tracker.last_collection_reset)
         self.assertEqual(tracker.session_peak, 0)
+
+    def test_unoccluded_unclear_frames_use_fallback_reset(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=1,
+            warmup_frames=1,
+            max_missed_frames=0,
+            collection_arm_checks=1,
+            collection_confirm_checks=2,
+            collection_fallback_checks=3,
+        )
+        tracker.update([], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+
+        for _ in range(2):
+            tracker.update(
+                [],
+                1000,
+                1000,
+                empty_scene_confirmed=False,
+                scene_occluded=False,
+            )
+            self.assertFalse(tracker.last_collection_reset)
+        tracker.update(
+            [],
+            1000,
+            1000,
+            empty_scene_confirmed=False,
+            scene_occluded=False,
+        )
+        self.assertTrue(tracker.last_collection_reset)
+        self.assertEqual(tracker.session_peak, 0)
+
+    def test_occlusion_restarts_fallback_counter(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=1,
+            warmup_frames=1,
+            max_missed_frames=0,
+            collection_arm_checks=1,
+            collection_fallback_checks=2,
+        )
+        tracker.update([], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+        tracker.update(
+            [], 1000, 1000, empty_scene_confirmed=False
+        )
+        self.assertEqual(tracker.fallback_empty_regular_checks, 1)
+        tracker.update(
+            [],
+            1000,
+            1000,
+            empty_scene_confirmed=False,
+            scene_occluded=True,
+        )
+        self.assertEqual(tracker.fallback_empty_regular_checks, 0)
+        tracker.update([], 1000, 1000, empty_scene_confirmed=False)
+        tracker.update([], 1000, 1000, empty_scene_confirmed=False)
+        self.assertTrue(tracker.last_collection_reset)
 
     def test_restored_peak_suppresses_duplicate_after_restart(self) -> None:
         tracker = EggTracker(

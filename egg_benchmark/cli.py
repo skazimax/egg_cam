@@ -47,7 +47,7 @@ def build_nest_guard(
         zones=zones,
         reference_dir=reference_dir,
         min_reference_similarity=float(
-            monitor_config.get("empty_reference_min_similarity", 0.80)
+            monitor_config.get("empty_reference_min_similarity", 0.70)
         ),
         min_detection_overlap=float(
             monitor_config.get("nest_occlusion_min_overlap", 0.10)
@@ -237,9 +237,15 @@ def run_monitor(args: argparse.Namespace) -> int:
         session_peak=stored_int("inventory_session_peak") if stored_peak is not None else None,
         peak_regular_hits=stored_int("inventory_peak_regular_hits"),
         empty_regular_checks=stored_int("inventory_empty_regular_checks"),
+        fallback_empty_regular_checks=stored_int(
+            "inventory_fallback_empty_regular_checks"
+        ),
         collection_arm_checks=int(monitor_config.get("collection_arm_checks", 3)),
         collection_confirm_checks=int(
             monitor_config.get("collection_confirm_checks", 6)
+        ),
+        collection_fallback_checks=int(
+            monitor_config.get("collection_fallback_checks", 12)
         ),
     )
     telegram = TelegramClient.from_environment()

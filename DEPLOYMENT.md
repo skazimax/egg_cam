@@ -119,11 +119,12 @@ monitor:
   max_center_distance: 0.035
   collection_arm_checks: 3
   collection_confirm_checks: 6
+  collection_fallback_checks: 12
   nest_zones:
     - [0.20, 0.15, 0.51, 0.76]
   nest_occlusion_min_overlap: 0.10
   empty_reference_dir: runtime/production/empty_reference
-  empty_reference_min_similarity: 0.80
+  empty_reference_min_similarity: 0.70
   annotation_label_mode: none
   annotation_line_width: 2
   report_hour: 8
@@ -134,8 +135,10 @@ monitor:
 а затем камера шесть обычных проверок подряд видит открытые пустые гнёзда.
 Курица в `nest_zones` и недостаточное сходство с эталоном не считаются пустым
 кадром. При интервале 300 секунд подтверждение пустого гнезда занимает около
-30 минут. Счётчики и максимум хранятся в `runtime/production/events.sqlite3` и
-переживают перезапуск сервиса.
+30 минут. Если сходство с эталоном остаётся неопределённым, 12 кадров подряд без
+яиц и без курицы в зоне гнёзд выполняют резервный сброс примерно через час.
+Счётчики и максимум хранятся в `runtime/production/events.sqlite3` и переживают
+перезапуск сервиса.
 
 Создайте каталог эталонов и скопируйте в него 3–5 проверенных кадров, где все
 гнёзда хорошо видны и в них нет яиц и куриц:

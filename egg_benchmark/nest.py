@@ -42,7 +42,8 @@ class NestGuard:
         ] = {}
         if reference_dir is not None and not self.reference_paths:
             LOGGER.warning(
-                "no empty-nest reference images found in %s; automatic collection reset is blocked",
+                "no empty-nest reference images found in %s; "
+                "reference-based collection reset is blocked",
                 reference_dir,
             )
 

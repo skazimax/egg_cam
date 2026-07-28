@@ -75,6 +75,9 @@ class EggMonitor:
             result.height,
             is_regular_frame=is_regular_frame,
             empty_scene_confirmed=empty_scene_confirmed,
+            scene_occluded=(
+                observation.occluded if observation is not None else False
+            ),
         )
         self.store.set_metadata_many(
             {
@@ -83,11 +86,15 @@ class EggMonitor:
                 "inventory_empty_regular_checks": str(
                     self.tracker.empty_regular_checks
                 ),
+                "inventory_fallback_empty_regular_checks": str(
+                    self.tracker.fallback_empty_regular_checks
+                ),
             }
         )
         LOGGER.info(
             "frame=%s visible=%d session_peak=%d new=%d hens=%d "
-            "nest_state=%s nest_similarity=%s latency=%.2fs",
+            "nest_state=%s nest_similarity=%s empty_checks=%d "
+            "fallback_empty_checks=%d latency=%.2fs",
             image_path.name,
             result.count,
             self.tracker.session_peak,
@@ -101,6 +108,8 @@ class EggMonitor:
             "-"
             if observation is None or observation.reference_similarity is None
             else f"{observation.reference_similarity:.3f}",
+            self.tracker.empty_regular_checks,
+            self.tracker.fallback_empty_regular_checks,
             result.latency_seconds,
         )
         if self.tracker.last_collection_reset:
