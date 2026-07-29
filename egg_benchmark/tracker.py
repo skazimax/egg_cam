@@ -180,16 +180,15 @@ class EggTracker:
             self.empty_regular_checks = 0
             self.fallback_empty_regular_checks = 0
             return
-        if self.peak_regular_hits < self.collection_arm_checks:
-            self.empty_regular_checks = 0
-            self.fallback_empty_regular_checks = 0
-            return
         if scene_occluded:
             self.empty_regular_checks = 0
             self.fallback_empty_regular_checks = 0
             return
         self.fallback_empty_regular_checks += 1
-        if empty_scene_confirmed:
+        if (
+            self.peak_regular_hits >= self.collection_arm_checks
+            and empty_scene_confirmed
+        ):
             self.empty_regular_checks += 1
         else:
             self.empty_regular_checks = 0

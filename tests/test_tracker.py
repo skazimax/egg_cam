@@ -151,6 +151,59 @@ class EggTrackerTest(unittest.TestCase):
         self.assertTrue(tracker.last_collection_reset)
         self.assertEqual(tracker.session_peak, 0)
 
+    def test_fallback_resets_session_that_was_not_armed(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=1,
+            warmup_frames=1,
+            max_missed_frames=0,
+            collection_arm_checks=3,
+            collection_confirm_checks=2,
+            collection_fallback_checks=3,
+        )
+        tracker.update([], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+        self.assertEqual(tracker.peak_regular_hits, 1)
+
+        for _ in range(2):
+            tracker.update(
+                [],
+                1000,
+                1000,
+                empty_scene_confirmed=True,
+                scene_occluded=False,
+            )
+            self.assertFalse(tracker.last_collection_reset)
+            self.assertEqual(tracker.empty_regular_checks, 0)
+        tracker.update(
+            [],
+            1000,
+            1000,
+            empty_scene_confirmed=True,
+            scene_occluded=False,
+        )
+
+        self.assertTrue(tracker.last_collection_reset)
+        self.assertEqual(tracker.session_peak, 0)
+
+    def test_primary_reset_still_requires_armed_session(self) -> None:
+        tracker = EggTracker(
+            confirm_frames=1,
+            warmup_frames=1,
+            max_missed_frames=0,
+            collection_arm_checks=3,
+            collection_confirm_checks=2,
+            collection_fallback_checks=10,
+        )
+        tracker.update([], 1000, 1000)
+        tracker.update([egg(300, 300)], 1000, 1000)
+
+        tracker.update([], 1000, 1000, empty_scene_confirmed=True)
+        tracker.update([], 1000, 1000, empty_scene_confirmed=True)
+
+        self.assertFalse(tracker.last_collection_reset)
+        self.assertEqual(tracker.empty_regular_checks, 0)
+        self.assertEqual(tracker.fallback_empty_regular_checks, 2)
+
     def test_occlusion_restarts_fallback_counter(self) -> None:
         tracker = EggTracker(
             confirm_frames=1,

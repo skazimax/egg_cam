@@ -65,7 +65,8 @@ monitor:
   # With --interval 300, six checks are approximately 30 minutes.
   collection_confirm_checks: 6
   # Fallback: reset after this many egg-free regular frames with no hen in a
-  # nest zone, even if bedding or lighting makes reference similarity unclear.
+  # nest zone, even when the session peak did not complete arming or bedding
+  # and lighting make reference similarity unclear.
   collection_fallback_checks: 12
   # Normalized x1, y1, x2, y2 coordinates of the nesting area. A chicken is an
   # occluder only when its detection overlaps this area.
