@@ -25,28 +25,13 @@ class EggTracker:
         iou_threshold: float = 0.20,
         max_center_distance: float = 0.035,
         session_peak: int | None = None,
-        peak_regular_hits: int = 0,
-        empty_regular_checks: int = 0,
-        fallback_empty_regular_checks: int = 0,
-        collection_arm_checks: int = 3,
-        collection_confirm_checks: int = 6,
-        collection_fallback_checks: int = 12,
     ) -> None:
         self.confirm_frames = max(1, confirm_frames)
         self.warmup_frames = max(1, warmup_frames)
         self.max_missed_frames = max(0, max_missed_frames)
         self.iou_threshold = iou_threshold
         self.max_center_distance = max_center_distance
-        self.collection_arm_checks = max(1, collection_arm_checks)
-        self.collection_confirm_checks = max(1, collection_confirm_checks)
-        self.collection_fallback_checks = max(1, collection_fallback_checks)
         self.session_peak = max(0, session_peak or 0)
-        self.peak_regular_hits = max(0, peak_regular_hits)
-        self.empty_regular_checks = max(0, empty_regular_checks)
-        self.fallback_empty_regular_checks = max(
-            0, fallback_empty_regular_checks
-        )
-        self.last_collection_reset = False
         # Restored state is already a baseline, so startup must not discard growth
         # that occurred while the process was stopped.
         self.frame_index = self.warmup_frames if session_peak is not None else 0
@@ -72,11 +57,8 @@ class EggTracker:
         width: int,
         height: int,
         is_regular_frame: bool = True,
-        empty_scene_confirmed: bool = True,
-        scene_occluded: bool = False,
     ) -> list[Detection]:
         self.frame_index += 1
-        self.last_collection_reset = False
         matched_tracks: set[int] = set()
         matched_detections: set[int] = set()
 
@@ -150,62 +132,12 @@ class EggTracker:
                     break
             self.session_peak = visible_count
 
-        if is_regular_frame:
-            self._update_collection_state(
-                visible_count,
-                empty_scene_confirmed,
-                scene_occluded,
-            )
         return emitted
 
-    def _update_collection_state(
-        self,
-        visible_count: int,
-        empty_scene_confirmed: bool,
-        scene_occluded: bool,
-    ) -> None:
-        if self.session_peak == 0:
-            self.peak_regular_hits = 0
-            self.empty_regular_checks = 0
-            self.fallback_empty_regular_checks = 0
-            return
-        if visible_count >= self.session_peak:
-            self.peak_regular_hits = min(
-                self.collection_arm_checks, self.peak_regular_hits + 1
-            )
-            self.empty_regular_checks = 0
-            self.fallback_empty_regular_checks = 0
-            return
-        if visible_count > 0:
-            self.empty_regular_checks = 0
-            self.fallback_empty_regular_checks = 0
-            return
-        if scene_occluded:
-            self.empty_regular_checks = 0
-            self.fallback_empty_regular_checks = 0
-            return
-        self.fallback_empty_regular_checks += 1
-        if (
-            self.peak_regular_hits >= self.collection_arm_checks
-            and empty_scene_confirmed
-        ):
-            self.empty_regular_checks += 1
-        else:
-            self.empty_regular_checks = 0
-        primary_reset = (
-            self.empty_regular_checks >= self.collection_confirm_checks
-        )
-        fallback_reset = (
-            self.fallback_empty_regular_checks
-            >= self.collection_fallback_checks
-        )
-        if not primary_reset and not fallback_reset:
-            return
+    def reset_session(self) -> None:
         self.session_peak = 0
-        self.peak_regular_hits = 0
-        self.empty_regular_checks = 0
-        self.fallback_empty_regular_checks = 0
-        self.last_collection_reset = True
+        self.tracks = []
+        self.frame_index = self.warmup_frames
 
     def _match_score(
         self,

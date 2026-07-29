@@ -124,5 +124,12 @@ class EventStore:
                 values.items(),
             )
 
+    def delete_metadata(self, keys: list[str]) -> None:
+        with self.connection:
+            self.connection.executemany(
+                "DELETE FROM metadata WHERE key = ?",
+                [(key,) for key in keys],
+            )
+
     def close(self) -> None:
         self.connection.close()

@@ -217,7 +217,17 @@ def run_monitor(args: argparse.Namespace) -> int:
     adapter.load()
 
     store = EventStore(args.state_dir / "events.sqlite3")
+    store.delete_metadata(
+        [
+            "inventory_peak_regular_hits",
+            "inventory_empty_regular_checks",
+            "inventory_fallback_empty_regular_checks",
+        ]
+    )
     stored_peak = store.get_metadata("inventory_session_peak")
+    egg_confirmation_frames = max(
+        1, int(monitor_config.get("egg_confirmation_frames", 3))
+    )
 
     def stored_int(key: str) -> int:
         try:
@@ -227,26 +237,18 @@ def run_monitor(args: argparse.Namespace) -> int:
             return 0
 
     tracker = EggTracker(
-        confirm_frames=int(monitor_config.get("confirm_frames", 2)),
-        warmup_frames=int(monitor_config.get("warmup_frames", 2)),
+        # The first candidate starts a batch; all configured confirmation
+        # frames must repeat it before the track is counted.
+        confirm_frames=egg_confirmation_frames + 1,
+        warmup_frames=int(
+            monitor_config.get("warmup_frames", egg_confirmation_frames + 1)
+        ),
         max_missed_frames=int(monitor_config.get("max_missed_frames", 1)),
         iou_threshold=float(monitor_config.get("iou_threshold", 0.20)),
         max_center_distance=float(
             monitor_config.get("max_center_distance", 0.035)
         ),
         session_peak=stored_int("inventory_session_peak") if stored_peak is not None else None,
-        peak_regular_hits=stored_int("inventory_peak_regular_hits"),
-        empty_regular_checks=stored_int("inventory_empty_regular_checks"),
-        fallback_empty_regular_checks=stored_int(
-            "inventory_fallback_empty_regular_checks"
-        ),
-        collection_arm_checks=int(monitor_config.get("collection_arm_checks", 3)),
-        collection_confirm_checks=int(
-            monitor_config.get("collection_confirm_checks", 6)
-        ),
-        collection_fallback_checks=int(
-            monitor_config.get("collection_fallback_checks", 12)
-        ),
     )
     telegram = TelegramClient.from_environment()
     if not args.dry_run and not telegram.enabled:
@@ -289,11 +291,18 @@ def run_monitor(args: argparse.Namespace) -> int:
             args.state_dir / "frames",
             interval_seconds=args.interval,
             max_frames=args.max_frames,
-            confirmation_burst_frames=int(
-                monitor_config.get("confirmation_burst_frames", 3)
+            egg_confirmation_frames=egg_confirmation_frames,
+            egg_confirmation_interval_seconds=float(
+                monitor_config.get("egg_confirmation_interval_seconds", 5.0)
             ),
-            confirmation_interval_seconds=float(
-                monitor_config.get("confirmation_interval_seconds", 5.0)
+            empty_confirmation_frames=int(
+                monitor_config.get("empty_confirmation_frames", 3)
+            ),
+            empty_confirmation_interval_seconds=float(
+                monitor_config.get("empty_confirmation_interval_seconds", 5.0)
+            ),
+            empty_final_delay_seconds=float(
+                monitor_config.get("empty_final_delay_seconds", 60.0)
             ),
         )
         return 0

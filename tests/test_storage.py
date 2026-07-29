@@ -8,6 +8,17 @@ from egg_benchmark.types import Detection
 
 
 class EventStoreTest(unittest.TestCase):
+    def test_delete_metadata_removes_legacy_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            store = EventStore(Path(directory) / "events.sqlite3")
+            store.set_metadata_many({"keep": "1", "legacy": "2"})
+
+            store.delete_metadata(["legacy"])
+
+            self.assertEqual(store.get_metadata("keep"), "1")
+            self.assertIsNone(store.get_metadata("legacy"))
+            store.close()
+
     def test_summary_counts_day_week_and_month(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             store = EventStore(Path(directory) / "events.sqlite3")
