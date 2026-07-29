@@ -2,7 +2,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from egg_benchmark.monitor import monitor_rtsp
+from egg_benchmark.monitor import EggMonitor, monitor_rtsp
 
 
 class FakeClock:
@@ -39,6 +39,7 @@ class FakeMonitor:
         self.last_empty_candidate = False
         self.images: list[tuple[Path, bool]] = []
         self.collection_resets = 0
+        self.collection_notifications: list[Path] = []
 
     def process_image(
         self, image_path: Path, is_regular_frame: bool = True
@@ -48,12 +49,83 @@ class FakeMonitor:
             self.last_empty_candidate = self.empty_states.pop(0)
         return 0
 
-    def confirm_empty_collection(self) -> None:
+    def confirm_empty_collection(self, image_path: Path) -> None:
         self.collection_resets += 1
+        self.collection_notifications.append(image_path)
         self.last_empty_candidate = False
 
 
+class CollectionTracker:
+    def __init__(self) -> None:
+        self.session_peak = 5
+        self.reset_calls = 0
+
+    def reset_session(self) -> None:
+        self.reset_calls += 1
+        self.session_peak = 0
+
+
+class CollectionStore:
+    def __init__(self) -> None:
+        self.metadata: dict[str, str] = {}
+
+    def set_metadata(self, key: str, value: str) -> None:
+        self.metadata[key] = value
+
+
+class CollectionTelegram:
+    def __init__(self, fail: bool = False) -> None:
+        self.fail = fail
+        self.photos: list[tuple[Path, str]] = []
+
+    def send_photo(self, image_path: Path, caption: str) -> None:
+        self.photos.append((image_path, caption))
+        if self.fail:
+            raise RuntimeError("telegram unavailable")
+
+
 class MonitorTest(unittest.TestCase):
+    def build_collection_monitor(
+        self, telegram: CollectionTelegram, tracker: CollectionTracker
+    ) -> tuple[EggMonitor, CollectionStore]:
+        store = CollectionStore()
+        monitor = EggMonitor(
+            adapter=object(),  # type: ignore[arg-type]
+            tracker=tracker,  # type: ignore[arg-type]
+            store=store,  # type: ignore[arg-type]
+            telegram=telegram,  # type: ignore[arg-type]
+            output_dir=Path("runtime"),
+        )
+        monitor.last_empty_candidate = True
+        return monitor, store
+
+    def test_collection_photo_is_sent_before_session_reset(self) -> None:
+        tracker = CollectionTracker()
+        telegram = CollectionTelegram()
+        monitor, store = self.build_collection_monitor(telegram, tracker)
+
+        monitor.confirm_empty_collection(Path("final-empty.jpg"))
+
+        self.assertEqual(
+            telegram.photos,
+            [(Path("final-empty.jpg"), "🥚 Яйца собраны — обнуляю сессию.")],
+        )
+        self.assertEqual(tracker.reset_calls, 1)
+        self.assertEqual(store.metadata["inventory_session_peak"], "0")
+
+    def test_telegram_failure_preserves_collection_session(self) -> None:
+        tracker = CollectionTracker()
+        monitor, store = self.build_collection_monitor(
+            CollectionTelegram(fail=True), tracker
+        )
+
+        with self.assertRaisesRegex(RuntimeError, "telegram unavailable"):
+            monitor.confirm_empty_collection(Path("final-empty.jpg"))
+
+        self.assertEqual(tracker.reset_calls, 0)
+        self.assertEqual(tracker.session_peak, 5)
+        self.assertEqual(store.metadata, {})
+
     @patch("egg_benchmark.monitor.capture_rtsp_frame")
     def test_egg_candidate_captures_configured_confirmation_batch(
         self, capture
@@ -125,6 +197,7 @@ class MonitorTest(unittest.TestCase):
             )
 
         self.assertEqual(monitor.collection_resets, 1)
+        self.assertEqual(monitor.collection_notifications, [Path("final.jpg")])
         self.assertEqual(clock.sleeps, [5, 5, 60])
 
     @patch("egg_benchmark.monitor.capture_rtsp_frame")
@@ -157,6 +230,7 @@ class MonitorTest(unittest.TestCase):
             )
 
         self.assertEqual(monitor.collection_resets, 0)
+        self.assertEqual(monitor.collection_notifications, [])
         self.assertNotIn(60, clock.sleeps)
 
 

@@ -121,8 +121,15 @@ class EggMonitor:
         self.send_daily_report_if_due(now)
         return len(new_eggs)
 
-    def confirm_empty_collection(self) -> None:
+    def confirm_empty_collection(self, image_path: Path) -> None:
         previous_peak = self.tracker.session_peak
+        caption = "🥚 Яйца собраны — обнуляю сессию."
+        if self.dry_run:
+            LOGGER.info("dry-run collection photo: %s; %s", image_path, caption)
+        else:
+            # Reset only after Telegram accepts the notification. On a network
+            # failure the empty sequence will be retried without losing state.
+            self.telegram.send_photo(image_path, caption)
         self.tracker.reset_session()
         self.last_empty_candidate = False
         self._persist_tracker_state()
@@ -264,7 +271,7 @@ def monitor_rtsp(
                     monitor.process_image(final_path, is_regular_frame=False)
                     processed += 1
                     if monitor.last_empty_candidate:
-                        monitor.confirm_empty_collection()
+                        monitor.confirm_empty_collection(final_path)
         except Exception:
             LOGGER.exception("monitoring iteration failed")
         remaining = interval_seconds - (time.monotonic() - started)
