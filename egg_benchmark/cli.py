@@ -238,15 +238,10 @@ def run_monitor(args: argparse.Namespace) -> int:
 
     tracker = EggTracker(
         # The first candidate starts a batch; all configured confirmation
-        # frames must repeat it before the track is counted.
+        # frames must repeat the higher total before it is counted.
         confirm_frames=egg_confirmation_frames + 1,
         warmup_frames=int(
             monitor_config.get("warmup_frames", egg_confirmation_frames + 1)
-        ),
-        max_missed_frames=int(monitor_config.get("max_missed_frames", 1)),
-        iou_threshold=float(monitor_config.get("iou_threshold", 0.20)),
-        max_center_distance=float(
-            monitor_config.get("max_center_distance", 0.035)
         ),
         session_peak=stored_int("inventory_session_peak") if stored_peak is not None else None,
     )

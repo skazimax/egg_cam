@@ -58,10 +58,6 @@ monitor:
   empty_final_delay_seconds: 60.0
   # Candidate frame + three confirmations establish the startup baseline.
   warmup_frames: 4
-  # Remove a track after this many missed checks.
-  max_missed_frames: 1
-  iou_threshold: 0.20
-  max_center_distance: 0.035
   # Normalized x1, y1, x2, y2 coordinates of the nesting area. A chicken is an
   # occluder only when its detection overlaps this area.
   nest_zones:

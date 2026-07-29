@@ -44,7 +44,6 @@ class EggTrackerTest(unittest.TestCase):
         tracker = EggTracker(
             confirm_frames=2,
             warmup_frames=2,
-            max_missed_frames=0,
         )
         tracker.update([], 1000, 1000)
         tracker.update([], 1000, 1000)
@@ -77,14 +76,12 @@ class EggTrackerTest(unittest.TestCase):
         tracker.reset_session()
 
         self.assertEqual(tracker.session_peak, 0)
-        self.assertEqual(tracker.tracks, [])
         self.assertEqual(len(tracker.update([egg(300, 300)], 1000, 1000)), 1)
 
     def test_restored_peak_suppresses_duplicate_after_restart(self) -> None:
         tracker = EggTracker(
             confirm_frames=2,
             warmup_frames=2,
-            max_missed_frames=0,
             session_peak=2,
         )
         pair = [egg(300, 300), egg(400, 300)]
@@ -93,6 +90,20 @@ class EggTrackerTest(unittest.TestCase):
         three = pair + [egg(500, 300)]
         tracker.update(three, 1000, 1000)
         self.assertEqual(len(tracker.update(three, 1000, 1000)), 1)
+
+    def test_fluctuating_counts_confirm_only_level_seen_in_every_check(self) -> None:
+        tracker = EggTracker(confirm_frames=4, warmup_frames=1, session_peak=3)
+
+        def eggs(count: int, offset: float) -> list[Detection]:
+            return [egg(offset + index * 50, 100 + offset) for index in range(count)]
+
+        self.assertEqual(tracker.update(eggs(5, 0), 1000, 1000), [])
+        self.assertEqual(tracker.update(eggs(5, 10), 1000, 1000), [])
+        self.assertEqual(tracker.update(eggs(4, 20), 1000, 1000), [])
+        confirmed = tracker.update(eggs(5, 30), 1000, 1000)
+
+        self.assertEqual(len(confirmed), 1)
+        self.assertEqual(tracker.session_peak, 4)
 
 
 if __name__ == "__main__":

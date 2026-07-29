@@ -116,9 +116,6 @@ monitor:
   empty_confirmation_interval_seconds: 5.0
   empty_final_delay_seconds: 60.0
   warmup_frames: 4
-  max_missed_frames: 1
-  iou_threshold: 0.20
-  max_center_distance: 0.035
   nest_zones:
     - [0.20, 0.15, 0.51, 0.76]
   nest_occlusion_min_overlap: 0.10
