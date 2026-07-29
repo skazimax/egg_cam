@@ -105,6 +105,7 @@ models:
       - a chicken
     occlusion_confidence: 0.50
     confidence: 0.30
+    min_box_area_ratio: 0.00030
     max_box_area_ratio: 0.002
     device: cpu
 

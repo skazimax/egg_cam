@@ -29,6 +29,28 @@ class DetectionAreaFilterTest(unittest.TestCase):
 
         self.assertEqual(filtered, [self.small])
 
+    def test_removes_box_below_configured_frame_ratio(self) -> None:
+        filtered = filter_detections_by_area(
+            [self.small, self.large],
+            width=100,
+            height=100,
+            max_box_area_ratio=None,
+            min_box_area_ratio=0.02,
+        )
+
+        self.assertEqual(filtered, [self.large])
+
+    def test_keeps_box_at_exact_minimum(self) -> None:
+        filtered = filter_detections_by_area(
+            [self.small],
+            width=100,
+            height=100,
+            max_box_area_ratio=None,
+            min_box_area_ratio=0.01,
+        )
+
+        self.assertEqual(filtered, [self.small])
+
     def test_none_or_zero_disables_filter(self) -> None:
         detections = [self.small, self.large]
 

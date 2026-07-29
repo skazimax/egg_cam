@@ -76,9 +76,12 @@ def filter_detections_by_area(
     width: int,
     height: int,
     max_box_area_ratio: float | None,
+    min_box_area_ratio: float | None = None,
 ) -> list[Detection]:
-    """Drop boxes that occupy more than the configured fraction of the frame."""
-    if max_box_area_ratio is None or max_box_area_ratio <= 0:
+    """Keep boxes within the configured fractions of the full frame area."""
+    min_enabled = min_box_area_ratio is not None and min_box_area_ratio > 0
+    max_enabled = max_box_area_ratio is not None and max_box_area_ratio > 0
+    if not min_enabled and not max_enabled:
         return detections
     frame_area = width * height
     if frame_area <= 0:
@@ -88,8 +91,12 @@ def filter_detections_by_area(
     for detection in detections:
         x1, y1, x2, y2 = detection.box_xyxy
         box_area = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-        if box_area / frame_area <= max_box_area_ratio:
-            filtered.append(detection)
+        area_ratio = box_area / frame_area
+        if min_enabled and area_ratio < min_box_area_ratio:
+            continue
+        if max_enabled and area_ratio > max_box_area_ratio:
+            continue
+        filtered.append(detection)
     return filtered
 
 
@@ -389,6 +396,7 @@ class OwlV2Adapter(ModelAdapter):
         confidence: float = 0.02,
         device: str = "auto",
         max_box_area_ratio: float | None = None,
+        min_box_area_ratio: float | None = None,
         occlusion_classes: list[str] | None = None,
         occlusion_confidence: float = 0.50,
         occlusion_max_box_area_ratio: float | None = None,
@@ -398,6 +406,7 @@ class OwlV2Adapter(ModelAdapter):
         self.confidence = confidence
         self.device = device
         self.max_box_area_ratio = max_box_area_ratio
+        self.min_box_area_ratio = min_box_area_ratio
         self.occlusion_classes = occlusion_classes or []
         self.occlusion_confidence = occlusion_confidence
         self.occlusion_max_box_area_ratio = occlusion_max_box_area_ratio
@@ -471,7 +480,11 @@ class OwlV2Adapter(ModelAdapter):
             context_detections, iou_threshold=0.35
         )
         egg_detections = filter_detections_by_area(
-            egg_detections, width, height, self.max_box_area_ratio
+            egg_detections,
+            width,
+            height,
+            self.max_box_area_ratio,
+            self.min_box_area_ratio,
         )
         context_detections = filter_detections_by_area(
             context_detections,

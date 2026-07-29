@@ -34,8 +34,9 @@ models:
       - a chicken
     occlusion_confidence: 0.50
     confidence: 0.30
-    # Maximum detection-box area as a fraction of the full frame.
-    # 0.002 means 0.2%; use null or 0 to disable the size filter.
+    # Detection-box area limits as fractions of the full frame. At 768x432,
+    # 0.00030 is about 100 px². Use null or 0 to disable either boundary.
+    min_box_area_ratio: 0.00030
     max_box_area_ratio: 0.002
     device: auto
   moondream2:
