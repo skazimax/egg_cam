@@ -185,6 +185,7 @@ monitor:
   empty_reference_min_similarity: 0.70
   annotation_label_mode: none
   annotation_line_width: 2
+  camera_failure_alert_after: 3
   report_hour: 8
 ```
 
@@ -375,6 +376,11 @@ cp /path/to/verified-empty-*.jpg runtime/production/empty_reference/
 их полностью, `index` оставляет только номер, `full` выводит номер, класс и
 уверенность модели. Для Telegram рекомендуется `none` вместе с тонкой рамкой
 `annotation_line_width: 2`, чтобы разметка не перекрывала яйцо.
+
+После `camera_failure_alert_after` последовательных ошибок RTSP бот один раз
+сообщает в Telegram, что камера недоступна. После первого успешно полученного
+кадра отправляется отдельное сообщение о восстановлении. Флаг уведомления
+хранится в SQLite, поэтому перезапуск сервиса не создаёт повторный алерт.
 
 ## Сохранение кадров без мониторинга
 

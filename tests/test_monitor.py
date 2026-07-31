@@ -40,6 +40,8 @@ class FakeMonitor:
         self.images: list[tuple[Path, bool]] = []
         self.collection_resets = 0
         self.collection_notifications: list[Path] = []
+        self.camera_alerts: list[int] = []
+        self.camera_recoveries: list[int] = []
 
     def process_image(
         self, image_path: Path, is_regular_frame: bool = True
@@ -53,6 +55,16 @@ class FakeMonitor:
         self.collection_resets += 1
         self.collection_notifications.append(image_path)
         self.last_empty_candidate = False
+
+    def notify_camera_unavailable(
+        self, consecutive_failures: int, error: Exception
+    ) -> None:
+        if consecutive_failures >= 3:
+            self.camera_alerts.append(consecutive_failures)
+
+    def notify_camera_recovered(self, consecutive_failures: int) -> bool:
+        self.camera_recoveries.append(consecutive_failures)
+        return True
 
 
 class CollectionTracker:
@@ -72,14 +84,23 @@ class CollectionStore:
     def set_metadata(self, key: str, value: str) -> None:
         self.metadata[key] = value
 
+    def get_metadata(self, key: str) -> str | None:
+        return self.metadata.get(key)
+
 
 class CollectionTelegram:
     def __init__(self, fail: bool = False) -> None:
         self.fail = fail
         self.photos: list[tuple[Path, str]] = []
+        self.messages: list[str] = []
 
     def send_photo(self, image_path: Path, caption: str) -> None:
         self.photos.append((image_path, caption))
+        if self.fail:
+            raise RuntimeError("telegram unavailable")
+
+    def send_message(self, message: str) -> None:
+        self.messages.append(message)
         if self.fail:
             raise RuntimeError("telegram unavailable")
 
@@ -125,6 +146,24 @@ class MonitorTest(unittest.TestCase):
         self.assertEqual(tracker.reset_calls, 0)
         self.assertEqual(tracker.session_peak, 5)
         self.assertEqual(store.metadata, {})
+
+    def test_camera_health_alert_is_deduplicated_and_recovered(self) -> None:
+        tracker = CollectionTracker()
+        telegram = CollectionTelegram()
+        monitor, store = self.build_collection_monitor(telegram, tracker)
+
+        monitor.notify_camera_unavailable(1, RuntimeError("rtsp"))
+        monitor.notify_camera_unavailable(2, RuntimeError("rtsp"))
+        self.assertEqual(telegram.messages, [])
+
+        monitor.notify_camera_unavailable(3, RuntimeError("rtsp"))
+        monitor.notify_camera_unavailable(4, RuntimeError("rtsp"))
+        self.assertEqual(len(telegram.messages), 1)
+        self.assertEqual(store.metadata["camera_unavailable_alert_sent"], "1")
+
+        self.assertTrue(monitor.notify_camera_recovered(4))
+        self.assertEqual(len(telegram.messages), 2)
+        self.assertEqual(store.metadata["camera_unavailable_alert_sent"], "0")
 
     @patch("egg_benchmark.monitor.capture_rtsp_frame")
     def test_egg_candidate_captures_configured_confirmation_batch(
@@ -232,6 +271,35 @@ class MonitorTest(unittest.TestCase):
         self.assertEqual(monitor.collection_resets, 0)
         self.assertEqual(monitor.collection_notifications, [])
         self.assertNotIn(60, clock.sleeps)
+
+    @patch("egg_benchmark.monitor.capture_rtsp_frame")
+    def test_camera_failure_alert_and_recovery_are_emitted_once(
+        self, capture
+    ) -> None:
+        capture.side_effect = [
+            RuntimeError("rtsp unavailable"),
+            RuntimeError("rtsp unavailable"),
+            RuntimeError("rtsp unavailable"),
+            Path("recovered.jpg"),
+        ]
+        monitor = FakeMonitor(FakeTracker())
+        clock = FakeClock()
+
+        with (
+            patch("egg_benchmark.monitor.time.monotonic", clock.monotonic),
+            patch("egg_benchmark.monitor.time.sleep", clock.sleep),
+        ):
+            monitor_rtsp(
+                monitor,  # type: ignore[arg-type]
+                "rtsp://camera",
+                Path("frames"),
+                interval_seconds=300,
+                max_frames=1,
+            )
+
+        self.assertEqual(monitor.camera_alerts, [3])
+        self.assertEqual(monitor.camera_recoveries, [3])
+        self.assertEqual(monitor.images, [(Path("recovered.jpg"), True)])
 
 
 if __name__ == "__main__":

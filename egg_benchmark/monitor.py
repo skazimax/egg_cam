@@ -32,6 +32,7 @@ class EggMonitor:
         annotation_label_mode: str = "none",
         annotation_line_width: int = 2,
         nest_guard: NestGuard | None = None,
+        camera_failure_alert_after: int = 3,
     ) -> None:
         self.adapter = adapter
         self.tracker = tracker
@@ -43,8 +44,54 @@ class EggMonitor:
         self.annotation_label_mode = annotation_label_mode
         self.annotation_line_width = annotation_line_width
         self.nest_guard = nest_guard
+        self.camera_failure_alert_after = max(1, camera_failure_alert_after)
         self.last_empty_candidate = False
         self._dry_report_date: str | None = None
+
+    def notify_camera_unavailable(
+        self, consecutive_failures: int, error: Exception
+    ) -> None:
+        if consecutive_failures < self.camera_failure_alert_after:
+            return
+        if self.store.get_metadata("camera_unavailable_alert_sent") == "1":
+            return
+        message = (
+            "⚠️ Камера недоступна\n"
+            f"Не удалось получить {consecutive_failures} кадра подряд. "
+            "Мониторинг яиц временно приостановлен."
+        )
+        if self.dry_run:
+            LOGGER.info("dry-run camera unavailable alert: %s", message)
+            self.store.set_metadata("camera_unavailable_alert_sent", "1")
+            return
+        try:
+            self.telegram.send_message(message)
+        except Exception:
+            LOGGER.exception(
+                "failed to send camera unavailable alert: %s", error
+            )
+            return
+        self.store.set_metadata("camera_unavailable_alert_sent", "1")
+
+    def notify_camera_recovered(self, consecutive_failures: int) -> bool:
+        if self.store.get_metadata("camera_unavailable_alert_sent") != "1":
+            return True
+        message = (
+            "✅ Камера снова доступна\n"
+            "Получение кадров восстановлено после "
+            f"{consecutive_failures} ошибок подряд."
+        )
+        if self.dry_run:
+            LOGGER.info("dry-run camera recovery alert: %s", message)
+            self.store.set_metadata("camera_unavailable_alert_sent", "0")
+            return True
+        try:
+            self.telegram.send_message(message)
+        except Exception:
+            LOGGER.exception("failed to send camera recovery alert")
+            return False
+        self.store.set_metadata("camera_unavailable_alert_sent", "0")
+        return True
 
     def process_image(
         self,
@@ -200,6 +247,23 @@ def monitor_rtsp(
             return None
         return max(0, max_frames - processed)
 
+    consecutive_capture_failures = 0
+
+    def capture_frame() -> Path:
+        nonlocal consecutive_capture_failures
+        try:
+            path = capture_rtsp_frame(rtsp_url, frames_dir)
+        except Exception as exc:
+            consecutive_capture_failures += 1
+            monitor.notify_camera_unavailable(
+                consecutive_capture_failures, exc
+            )
+            raise
+        if consecutive_capture_failures:
+            if monitor.notify_camera_recovered(consecutive_capture_failures):
+                consecutive_capture_failures = 0
+        return path
+
     def capture_batch(count: int, interval: float) -> list[Path]:
         capacity = remaining_capacity()
         if capacity is not None:
@@ -210,7 +274,7 @@ def monitor_rtsp(
             delay = next_capture - time.monotonic()
             if delay > 0:
                 time.sleep(delay)
-            paths.append(capture_rtsp_frame(rtsp_url, frames_dir))
+            paths.append(capture_frame())
             next_capture += max(0.0, interval)
         return paths
 
@@ -218,7 +282,7 @@ def monitor_rtsp(
     while max_frames is None or processed < max_frames:
         started = time.monotonic()
         try:
-            image_path = capture_rtsp_frame(rtsp_url, frames_dir)
+            image_path = capture_frame()
             new_eggs = monitor.process_image(image_path)
             processed += 1
             needs_egg_confirmation = new_eggs == 0 and (
@@ -267,7 +331,7 @@ def monitor_rtsp(
                         empty_final_delay_seconds,
                     )
                     time.sleep(max(0.0, empty_final_delay_seconds))
-                    final_path = capture_rtsp_frame(rtsp_url, frames_dir)
+                    final_path = capture_frame()
                     monitor.process_image(final_path, is_regular_frame=False)
                     processed += 1
                     if monitor.last_empty_candidate:

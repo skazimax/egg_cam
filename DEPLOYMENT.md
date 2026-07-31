@@ -124,6 +124,7 @@ monitor:
   empty_reference_min_similarity: 0.70
   annotation_label_mode: none
   annotation_line_width: 2
+  camera_failure_alert_after: 3
   report_hour: 8
 ```
 
@@ -316,7 +317,7 @@ After=network-online.target
 Type=simple
 EnvironmentFile=/home/skazimax/.config/egg-cam/sstp.env
 ExecStart=/usr/sbin/sstpc --tls-ext --cert-warn --save-server-route --ipparam egg-cam-sstp --user ${SSTP_USERNAME} --password ${SSTP_PASSWORD} ${SSTP_SERVER} usepeerdns require-mschap-v2 noauth noipdefault refuse-eap noccp unit 20 ipparam egg-cam-sstp nodetach
-Restart=on-failure
+Restart=always
 RestartSec=10
 TimeoutStopSec=15
 KillMode=mixed

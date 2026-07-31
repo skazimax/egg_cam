@@ -72,4 +72,7 @@ monitor:
   # Supported label modes: none, index, full.
   annotation_label_mode: none
   annotation_line_width: 2
+  # Send one Telegram warning after this many consecutive RTSP failures and
+  # one recovery message when frames resume.
+  camera_failure_alert_after: 3
   report_hour: 8

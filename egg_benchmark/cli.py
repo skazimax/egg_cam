@@ -268,6 +268,9 @@ def run_monitor(args: argparse.Namespace) -> int:
             monitor_config.get("annotation_line_width", 2)
         ),
         nest_guard=build_nest_guard(monitor_config, args.config),
+        camera_failure_alert_after=int(
+            monitor_config.get("camera_failure_alert_after", 3)
+        ),
     )
     try:
         if args.input is not None:
