@@ -24,23 +24,33 @@ class TelegramClient:
 
     def send_photo(self, image_path: Path, caption: str) -> None:
         self._require_credentials()
-        with image_path.open("rb") as image:
-            response = requests.post(
-                f"https://api.telegram.org/bot{self.token}/sendPhoto",
-                data={"chat_id": self.chat_id, "caption": caption},
-                files={"photo": (image_path.name, image, "image/jpeg")},
-                timeout=60,
-            )
-        response.raise_for_status()
+        try:
+            with image_path.open("rb") as image:
+                response = requests.post(
+                    f"https://api.telegram.org/bot{self.token}/sendPhoto",
+                    data={"chat_id": self.chat_id, "caption": caption},
+                    files={"photo": (image_path.name, image, "image/jpeg")},
+                    timeout=60,
+                )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"Telegram photo request failed ({type(exc).__name__})"
+            ) from None
 
     def send_message(self, text: str) -> None:
         self._require_credentials()
-        response = requests.post(
-            f"https://api.telegram.org/bot{self.token}/sendMessage",
-            json={"chat_id": self.chat_id, "text": text},
-            timeout=30,
-        )
-        response.raise_for_status()
+        try:
+            response = requests.post(
+                f"https://api.telegram.org/bot{self.token}/sendMessage",
+                json={"chat_id": self.chat_id, "text": text},
+                timeout=30,
+            )
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            raise RuntimeError(
+                f"Telegram message request failed ({type(exc).__name__})"
+            ) from None
 
     def _require_credentials(self) -> None:
         if not self.enabled:

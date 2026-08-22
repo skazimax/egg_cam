@@ -10,7 +10,7 @@ from typing import Iterable
 from .models import ModelAdapter
 from .nest import NestGuard
 from .reporting import save_annotated
-from .sources import capture_rtsp_frame
+from .sources import capture_rtsp_frame, capture_rtsp_frame_guarded
 from .storage import EventStore
 from .telegram import TelegramClient
 from .tracker import EggTracker
@@ -238,6 +238,9 @@ def monitor_rtsp(
     empty_confirmation_frames: int = 3,
     empty_confirmation_interval_seconds: float = 5.0,
     empty_final_delay_seconds: float = 60.0,
+    camera_capture_timeout_seconds: float | None = None,
+    camera_open_timeout_seconds: float = 15.0,
+    camera_read_timeout_seconds: float = 15.0,
 ) -> None:
     egg_confirmation_frames = max(1, egg_confirmation_frames)
     empty_confirmation_frames = max(1, empty_confirmation_frames)
@@ -252,7 +255,19 @@ def monitor_rtsp(
     def capture_frame() -> Path:
         nonlocal consecutive_capture_failures
         try:
-            path = capture_rtsp_frame(rtsp_url, frames_dir)
+            if (
+                camera_capture_timeout_seconds is not None
+                and camera_capture_timeout_seconds > 0
+            ):
+                path = capture_rtsp_frame_guarded(
+                    rtsp_url,
+                    frames_dir,
+                    timeout_seconds=camera_capture_timeout_seconds,
+                    open_timeout_seconds=camera_open_timeout_seconds,
+                    read_timeout_seconds=camera_read_timeout_seconds,
+                )
+            else:
+                path = capture_rtsp_frame(rtsp_url, frames_dir)
         except Exception as exc:
             consecutive_capture_failures += 1
             monitor.notify_camera_unavailable(

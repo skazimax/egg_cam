@@ -302,6 +302,15 @@ def run_monitor(args: argparse.Namespace) -> int:
             empty_final_delay_seconds=float(
                 monitor_config.get("empty_final_delay_seconds", 60.0)
             ),
+            camera_capture_timeout_seconds=float(
+                monitor_config.get("camera_capture_timeout_seconds", 45.0)
+            ),
+            camera_open_timeout_seconds=float(
+                monitor_config.get("camera_open_timeout_seconds", 15.0)
+            ),
+            camera_read_timeout_seconds=float(
+                monitor_config.get("camera_read_timeout_seconds", 15.0)
+            ),
         )
         return 0
     except KeyboardInterrupt:

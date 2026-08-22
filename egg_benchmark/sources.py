@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -27,11 +30,32 @@ def capture_rtsp_frame(
     rtsp_url: str,
     output_dir: Path,
     warmup_seconds: float = DEFAULT_RTSP_WARMUP_SECONDS,
+    open_timeout_seconds: float | None = None,
+    read_timeout_seconds: float | None = None,
 ) -> Path:
     import cv2
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    stream = cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+    capture_params: list[int] = []
+    if open_timeout_seconds is not None and open_timeout_seconds > 0:
+        capture_params.extend(
+            [
+                cv2.CAP_PROP_OPEN_TIMEOUT_MSEC,
+                round(open_timeout_seconds * 1000),
+            ]
+        )
+    if read_timeout_seconds is not None and read_timeout_seconds > 0:
+        capture_params.extend(
+            [
+                cv2.CAP_PROP_READ_TIMEOUT_MSEC,
+                round(read_timeout_seconds * 1000),
+            ]
+        )
+    stream = (
+        cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG, capture_params)
+        if capture_params
+        else cv2.VideoCapture(rtsp_url, cv2.CAP_FFMPEG)
+    )
     if not stream.isOpened():
         raise RuntimeError("could not open RTSP stream")
     try:
@@ -43,6 +67,55 @@ def capture_rtsp_frame(
         return destination
     finally:
         stream.release()
+
+
+def capture_rtsp_frame_guarded(
+    rtsp_url: str,
+    output_dir: Path,
+    timeout_seconds: float,
+    warmup_seconds: float = DEFAULT_RTSP_WARMUP_SECONDS,
+    open_timeout_seconds: float = 15.0,
+    read_timeout_seconds: float = 15.0,
+) -> Path:
+    """Capture in a disposable process so a native decoder hang is killable."""
+    timeout_seconds = max(1.0, timeout_seconds)
+    environment = os.environ.copy()
+    environment["EGG_CAM_CAPTURE_RTSP_URL"] = rtsp_url
+    command = [
+        sys.executable,
+        "-m",
+        "egg_benchmark.capture_worker",
+        "--output-dir",
+        str(output_dir),
+        "--warmup-seconds",
+        str(max(0.0, warmup_seconds)),
+        "--open-timeout-seconds",
+        str(max(0.0, open_timeout_seconds)),
+        "--read-timeout-seconds",
+        str(max(0.0, read_timeout_seconds)),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=timeout_seconds,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(
+            f"RTSP capture timed out after {timeout_seconds:.1f}s"
+        ) from None
+    if completed.returncode != 0:
+        raise RuntimeError("RTSP capture worker failed")
+    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    if not lines:
+        raise RuntimeError("RTSP capture worker returned no frame path")
+    image_path = Path(lines[-1])
+    if not image_path.is_file():
+        raise RuntimeError("RTSP capture worker did not create a frame")
+    return image_path
 
 
 def discover_images(path: Path) -> list[Path]:

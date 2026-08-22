@@ -272,7 +272,7 @@ class MonitorTest(unittest.TestCase):
         self.assertEqual(monitor.collection_notifications, [])
         self.assertNotIn(60, clock.sleeps)
 
-    @patch("egg_benchmark.monitor.capture_rtsp_frame")
+    @patch("egg_benchmark.monitor.capture_rtsp_frame_guarded")
     def test_camera_failure_alert_and_recovery_are_emitted_once(
         self, capture
     ) -> None:
@@ -295,6 +295,7 @@ class MonitorTest(unittest.TestCase):
                 Path("frames"),
                 interval_seconds=300,
                 max_frames=1,
+                camera_capture_timeout_seconds=45,
             )
 
         self.assertEqual(monitor.camera_alerts, [3])

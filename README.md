@@ -186,6 +186,9 @@ monitor:
   annotation_label_mode: none
   annotation_line_width: 2
   camera_failure_alert_after: 3
+  camera_capture_timeout_seconds: 45.0
+  camera_open_timeout_seconds: 15.0
+  camera_read_timeout_seconds: 15.0
   report_hour: 8
 ```
 
@@ -381,6 +384,18 @@ cp /path/to/verified-empty-*.jpg runtime/production/empty_reference/
 сообщает в Telegram, что камера недоступна. После первого успешно полученного
 кадра отправляется отдельное сообщение о восстановлении. Флаг уведомления
 хранится в SQLite, поэтому перезапуск сервиса не создаёт повторный алерт.
+
+Каждый рабочий RTSP-захват выполняется в отдельном процессе. OpenCV ограничен
+параметрами `camera_open_timeout_seconds` и `camera_read_timeout_seconds`, а
+`camera_capture_timeout_seconds` задаёт жёсткий срок для всей операции. Если
+нативный декодер зависает, worker принудительно завершается, попытка учитывается
+как ошибка камеры, а основной монитор остаётся работоспособным. Общий тайм-аут
+должен быть больше суммы обычного открытия потока, чтения и четырёх секунд
+прогрева ключевого кадра.
+
+Ошибки Telegram записываются без полного API URL, чтобы токен бота не попадал
+в systemd journal. Старые записи journal это не очищает; если токен ранее попал
+в журнал, его необходимо перевыпустить через BotFather.
 
 ## Сохранение кадров без мониторинга
 

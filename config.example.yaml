@@ -75,4 +75,9 @@ monitor:
   # Send one Telegram warning after this many consecutive RTSP failures and
   # one recovery message when frames resume.
   camera_failure_alert_after: 3
+  # Run each RTSP capture in a disposable process. OpenCV gets shorter
+  # open/read limits; the outer limit kills the worker even on a native hang.
+  camera_capture_timeout_seconds: 45.0
+  camera_open_timeout_seconds: 15.0
+  camera_read_timeout_seconds: 15.0
   report_hour: 8

@@ -125,6 +125,9 @@ monitor:
   annotation_label_mode: none
   annotation_line_width: 2
   camera_failure_alert_after: 3
+  camera_capture_timeout_seconds: 45.0
+  camera_open_timeout_seconds: 15.0
+  camera_read_timeout_seconds: 15.0
   report_hour: 8
 ```
 
@@ -135,6 +138,11 @@ monitor:
 проверка через 60 секунд. Все количества и интервалы задаются параметрами выше.
 Максимум сессии хранится в `runtime/production/events.sqlite3` и переживает
 перезапуск сервиса.
+
+Каждый RTSP-захват запускается в отдельном worker-процессе. Тайм-ауты открытия
+и чтения ограничивают FFmpeg/OpenCV, а `camera_capture_timeout_seconds`
+принудительно завершает worker при полном зависании нативного декодера. Такая
+ошибка участвует в `camera_failure_alert_after` наравне с обычным отказом RTSP.
 
 Создайте каталог эталонов и скопируйте в него 3–5 проверенных кадров, где все
 гнёзда хорошо видны и в них нет яиц и куриц:
