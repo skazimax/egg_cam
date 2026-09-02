@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+unit_state() {
+    local alias="$1"
+    local unit="$2"
+    local kind="${3:-service}"
+    local active enabled result state icon suffix
+    active="$(systemctl is-active "$unit" 2>/dev/null || true)"
+    enabled="$(systemctl is-enabled "$unit" 2>/dev/null || true)"
+    result="$(systemctl show "$unit" -p Result --value 2>/dev/null || true)"
+
+    if [[ "$kind" == "job" ]]; then
+        case "$active" in
+            active|activating) icon="⏳"; state="выполняется" ;;
+            failed)            icon="❌"; state="ошибка" ;;
+            inactive)
+                if [[ "$result" == "success" ]]; then
+                    icon="✅"; state="успешно"
+                else
+                    icon="⚪"; state="не запускался"
+                fi
+                ;;
+            *)                 icon="❔"; state="неизвестно" ;;
+        esac
+        printf '%s %s: %s\n' "$icon" "$alias" "$state"
+        return
+    fi
+
+    if [[ "$kind" == "timer" ]]; then
+        case "$active" in
+            active)     icon="✅"; state="расписание включено" ;;
+            failed)     icon="❌"; state="ошибка" ;;
+            inactive)   icon="⏸"; state="расписание выключено" ;;
+            activating) icon="⏳"; state="запускается" ;;
+            *)          icon="❔"; state="неизвестно" ;;
+        esac
+    else
+        case "$active" in
+            active)     icon="✅"; state="работает" ;;
+            failed)     icon="❌"; state="ошибка" ;;
+            inactive)   icon="⏹"; state="выключен" ;;
+            activating) icon="⏳"; state="запускается" ;;
+            *)          icon="❔"; state="неизвестно" ;;
+        esac
+    fi
+
+    case "$enabled" in
+        enabled)  suffix=" · автозапуск вкл" ;;
+        disabled) suffix=" · автозапуск выкл" ;;
+        *)        suffix="" ;;
+    esac
+    printf '%s %s: %s%s\n' "$icon" "$alias" "$state" "$suffix"
+}
+
+timer_next() {
+    local alias="$1"
+    local unit="$2"
+    local next formatted
+    next="$(systemctl show "$unit" -p NextElapseUSecRealtime --value 2>/dev/null || true)"
+    formatted="$(date -d "$next" '+%d.%m %H:%M' 2>/dev/null || true)"
+    printf '🕒 %s: %s\n' "$alias" "${formatted:-не запланирован}"
+}
+
+water_run() {
+    local period="$1"
+    local unit="sonar-water-report@${period}.service"
+    local alias="Отчёт · день"
+    [[ "$period" == "weekly" ]] && alias="Отчёт · неделя"
+    systemctl reset-failed "$unit" || true
+    systemctl start "$unit"
+    unit_state "$alias" "$unit" job
+}
+
+case "${1:-}" in
+    status)
+        unit_state "Яйца" egg-cam.service
+        unit_state "Управление" egg-cam-control.service
+        unit_state "AdGuard" egg-cam-adguard.service
+        unit_state "SSTP" egg-cam-sstp.service
+        unit_state "Вода · день" sonar-water-report-daily.timer timer
+        unit_state "Вода · неделя" sonar-water-report-weekly.timer timer
+        ;;
+    egg-on)
+        systemctl enable --now egg-cam.service
+        unit_state "Яйца" egg-cam.service
+        ;;
+    egg-off)
+        systemctl disable --now egg-cam.service
+        unit_state "Яйца" egg-cam.service
+        ;;
+    egg-restart)
+        systemctl restart egg-cam.service
+        unit_state "Яйца" egg-cam.service
+        ;;
+    water-status)
+        unit_state "Вода · день" sonar-water-report-daily.timer timer
+        unit_state "Вода · неделя" sonar-water-report-weekly.timer timer
+        unit_state "Отчёт · день" sonar-water-report@daily.service job
+        unit_state "Отчёт · неделя" sonar-water-report@weekly.service job
+        timer_next "День" sonar-water-report-daily.timer
+        timer_next "Неделя" sonar-water-report-weekly.timer
+        ;;
+    water-daily)
+        water_run daily
+        ;;
+    water-weekly)
+        water_run weekly
+        ;;
+    network-status)
+        unit_state "AdGuard" egg-cam-adguard.service
+        unit_state "SSTP" egg-cam-sstp.service
+        route_device="$(ip route get 192.168.2.3 2>/dev/null | awk '{for (i=1; i<=NF; i++) if ($i == "dev") {print $(i+1); exit}}')"
+        if [[ -n "$route_device" ]]; then
+            printf '✅ Камера: маршрут через %s\n' "$route_device"
+        else
+            printf '❌ Камера: маршрут не найден\n'
+        fi
+        ;;
+    sstp-restart)
+        systemctl restart egg-cam-sstp.service
+        unit_state "SSTP" egg-cam-sstp.service
+        ;;
+    adguard-restart)
+        systemctl restart egg-cam-adguard.service
+        unit_state "AdGuard" egg-cam-adguard.service
+        ;;
+    *)
+        echo "unsupported action" >&2
+        exit 2
+        ;;
+esac

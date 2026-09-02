@@ -213,10 +213,17 @@ OWLv2.
 CAMERA_RTSP_URL='rtsp://USER:PASSWORD@CAMERA_IP:554/Streaming/Channels/101'
 TELEGRAM_BOT_TOKEN='123456:telegram-token'
 TELEGRAM_CHAT_ID='@channel_name'
+# Числовой Telegram user ID администратора; нужен только control-bot.
+TELEGRAM_ADMIN_USER_IDS='123456789'
 ```
 
 Для приватного Telegram-канала `TELEGRAM_CHAT_ID` обычно имеет вид `-100...`.
 Бота нужно добавить в канал с правом публикации сообщений.
+
+`TELEGRAM_ADMIN_USER_IDS` не является ID канала. Это один или несколько
+числовых ID пользователей, которым разрешено управлять сервером, через запятую.
+Control bot принимает команды только в личном чате. Он использует тот же
+`TELEGRAM_BOT_TOKEN`, что мониторинг и отчёты.
 
 Ограничьте доступ к файлу:
 

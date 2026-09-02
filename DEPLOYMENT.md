@@ -562,7 +562,83 @@ sudo journalctl -b -u egg-cam-sstp -u egg-cam-adguard -u egg-cam
 frame=camera_... visible=... new=... latency=...s
 ```
 
-## 11. Данные и обслуживание
+## 11. Управление сервисами через существующего Telegram-бота
+
+Control bot — отдельный системный процесс, но не отдельный Telegram-бот. Он
+использует `TELEGRAM_BOT_TOKEN` из того же `.env`, принимает команды в личном
+чате и продолжает работать, когда мониторинг яиц выключен.
+
+Добавьте в `.env` числовой ID администратора:
+
+```bash
+TELEGRAM_ADMIN_USER_IDS='123456789'
+```
+
+Для нескольких администраторов перечислите ID через запятую. Имена
+пользователей (`@username`) намеренно не поддерживаются.
+
+Telegram не позволяет одновременно использовать webhook и `getUpdates`. До
+запуска проверьте текущую конфигурацию:
+
+```bash
+set -a
+source .env
+set +a
+curl --socks5-hostname 127.0.0.1:1080 \
+  "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/getWebhookInfo"
+```
+
+Удаляйте webhook только после проверки, что старый обработчик больше не нужен:
+
+```bash
+curl --socks5-hostname 127.0.0.1:1080 \
+  "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/deleteWebhook?drop_pending_updates=false"
+```
+
+Установите root-owned helper, sudoers-правило и unit:
+
+```bash
+sudo install -o root -g root -m 0755 \
+  deploy/egg-cam-control /usr/local/sbin/egg-cam-control
+sudo install -o root -g root -m 0440 \
+  deploy/egg-cam-control.sudoers /etc/sudoers.d/egg-cam-control
+sudo visudo -cf /etc/sudoers.d/egg-cam-control
+sudo install -o root -g root -m 0644 \
+  deploy/egg-cam-control.service /etc/systemd/system/egg-cam-control.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now egg-cam-control.service
+```
+
+Доступные команды:
+
+```text
+/status
+/egg_on
+/egg_off
+/egg_restart
+/water_status
+/water_daily
+/water_weekly
+/network_status
+/sstp_restart
+/adguard_restart
+```
+
+`/egg_off` выполняет `disable --now`: мониторинг не запустится после
+перезагрузки, но control bot, AdGuard, SSTP и таймеры воды продолжат работать.
+Произвольные shell-команды не поддерживаются. Все обращения и отказы видны в
+журнале:
+
+```bash
+systemctl status egg-cam-control.service
+journalctl -u egg-cam-control.service -f
+```
+
+Последний обработанный Telegram update хранится в
+`runtime/control-bot/update_offset`. Благодаря этому команды не выполняются
+повторно после перезапуска сервиса.
+
+## 12. Данные и обслуживание
 
 Обычные кадры:
 
@@ -597,7 +673,7 @@ df -h /
 Кадры пока не удаляются автоматически. Для длительной работы настройте
 ротацию или периодическую очистку после определения требуемого срока хранения.
 
-## 12. Типовые проблемы
+## 13. Типовые проблемы
 
 ### RTSP возвращает `401 Unauthorized`
 

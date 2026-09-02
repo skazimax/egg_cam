@@ -1,0 +1,2 @@
+# The executable is owned by root and accepts only the fixed actions defined in it.
+skazimax ALL=(root) NOPASSWD: /usr/local/sbin/egg-cam-control *

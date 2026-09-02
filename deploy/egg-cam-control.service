@@ -1,0 +1,24 @@
+[Unit]
+Description=Telegram control service for egg-cam host
+Wants=network-online.target egg-cam-adguard.service
+After=network-online.target egg-cam-adguard.service
+
+[Service]
+Type=simple
+User=skazimax
+Group=skazimax
+WorkingDirectory=/home/skazimax/git/egg_cam
+EnvironmentFile=/home/skazimax/git/egg_cam/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=ALL_PROXY=socks5h://127.0.0.1:1080
+Environment=all_proxy=socks5h://127.0.0.1:1080
+Environment=NO_PROXY=localhost,127.0.0.1
+Environment=no_proxy=localhost,127.0.0.1
+ExecStart=/home/skazimax/git/egg_cam/.venv/bin/python -m egg_benchmark.control_bot
+Restart=always
+RestartSec=10
+TimeoutStopSec=15
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
